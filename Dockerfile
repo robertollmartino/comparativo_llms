@@ -20,10 +20,9 @@ COPY --from=builder /app/package*.json ./
 RUN npm ci --omit=dev
 
 COPY --from=builder /app/dist ./dist
-COPY --from=builder /app/data ./data
 
 RUN mkdir -p /app/data && chown -R node:node /app
 USER node
 
 EXPOSE 3000
-CMD ["node", "dist/server/server/index.js"]
+CMD ["noFROM..."]
