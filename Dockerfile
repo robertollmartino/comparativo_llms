@@ -25,4 +25,4 @@ RUN mkdir -p /app/data && chown -R node:node /app
 USER node
 
 EXPOSE 3000
-CMD ["noFROM..."]
+CMD ["node", "dist/server/server/index.js"]
