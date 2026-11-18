@@ -2,7 +2,7 @@ FROM node:22-bookworm-slim AS builder
 
 WORKDIR /app
 COPY package*.json ./
-RUN npm ci
+RUN npm install --no-audit --no-fund
 
 COPY . .
 RUN npm run build
@@ -17,7 +17,7 @@ ENV JSON_SNAPSHOT_PATH=/app/data/latest-snapshot.json
 ENV SYNC_INTERVAL_MS=300000
 
 COPY --from=builder /app/package*.json ./
-RUN npm ci --omit=dev
+RUN npm install --omit=dev --no-audit --no-fund
 
 COPY --from=builder /app/dist ./dist
 
