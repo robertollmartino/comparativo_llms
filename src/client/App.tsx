@@ -1,16 +1,13 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import {
   Activity,
-  AlertTriangle,
   Award,
   BarChart3,
   BookOpen,
   Check,
-  CheckCircle2,
   Clock,
   Cpu,
   Database,
-  ExternalLink,
   EyeOff,
   Filter,
   GitCompare,
@@ -18,10 +15,8 @@ import {
   RefreshCw,
   Scale,
   Search,
-  ShieldAlert,
   Sliders,
   Sparkles,
-  Upload,
   X,
 } from 'lucide-react';
 import {
@@ -33,6 +28,7 @@ import {
   buildPerBenchmarkRankings,
   calculateOverallRanking,
   evaluateBenchmarkFrontierCoverage,
+  isFrontierModel,
   resolveScoreProvider,
 } from '../shared/ranking.js';
 import {
@@ -46,6 +42,12 @@ import {
   UseCaseDefinition,
   WeightPreset,
 } from '../shared/types.js';
+import { BenchmarkTableCard } from './components/BenchmarkTables.js';
+import { SAMPLE_MANUAL_JSON, SourcesTab } from './components/SourcesTab.js';
+import {
+  SubstitutesTab,
+  UseCasesTab,
+} from './components/UseCasesAndSubstitutes.js';
 
 interface DiscoveredModelSummary {
   canonicalId: string;
@@ -103,257 +105,6 @@ const FEATURED_FRONTIER_PROVIDERS: string[] = [
   'Cohere',
 ];
 
-const SAMPLE_MANUAL_JSON = JSON.stringify(
-  [
-    {
-      benchmarkId: 'llm-accountants-lawyers-br',
-      model: 'Claude Fable 5.2 (Max)',
-      provider: 'Anthropic',
-      effort: 'max',
-      score: 91.4,
-      sourceUrl: 'https://www.vals.ai/benchmarks/tax_eval_v2',
-      notes:
-        'Caderno Contábil/Tributário BR (SPED ECD/ECF, Simples Nacional LC 123/06, Reforma Tributária EC 132/2023 e LC 214/2025 IBS/CBS — zero alucinação de norma revogada)',
-    },
-    {
-      benchmarkId: 'llm-accountants-lawyers-br',
-      model: 'Gemini 4 Carbon (High)',
-      provider: 'Google',
-      effort: 'high',
-      score: 89.8,
-      sourceUrl: 'https://www.vals.ai/benchmarks/tax_eval_v2',
-      notes:
-        'Caderno Contábil/Tributário BR (SPED, Simples Nacional e Reforma Tributária IBS/CBS)',
-    },
-    {
-      benchmarkId: 'bluefin',
-      model: 'Claude Opus 5.5 (Max)',
-      provider: 'Anthropic',
-      effort: 'max',
-      score: 84.5,
-      notes:
-        'Avaliação manual determinística em modelagem Excel 3-Statement + DCF',
-    },
-  ],
-  null,
-  2
-);
-
-const SAMPLE_MANUAL_CSV = `benchmarkId,model,provider,effort,score,sourceUrl,notes
-finsheet-bench,Claude Fable 5.2 (Max),Anthropic,max,88.2,https://www.vals.ai/benchmarks/corp_fin_v2,Auditoria determinística DRE/Balanço/DFC
-finsheet-bench,GPT-6.2 Astra (Max),OpenAI,max,86.7,https://www.vals.ai/benchmarks/corp_fin_v2,Auditoria determinística DRE/Balanço/DFC
-ui-cube,Claude Opus 5.5 (Max),Anthropic,max,79.4,https://github.com/UiPath/uipath_enterprise_benchmark,Execução local DeterministicBenchmark UiPath`;
-
-interface BenchmarkTableCardProps {
-  table: BenchmarkRankingTable;
-  comparedModelIds: string[];
-  onToggleCompare: (canonicalId: string) => void;
-  defaultRowLimit?: number;
-}
-
-function BenchmarkTableCard({
-  table,
-  comparedModelIds,
-  onToggleCompare,
-  defaultRowLimit = 20,
-}: BenchmarkTableCardProps) {
-  const [expanded, setExpanded] = useState(false);
-  const visibleRows = expanded
-    ? table.rows
-    : table.rows.slice(0, defaultRowLimit);
-  const hasMore = table.rows.length > defaultRowLimit;
-
-  return (
-    <div className="bg-slate-900 border border-slate-800 rounded-xl overflow-hidden shadow-lg">
-      {/* Benchmark Card Header */}
-      <div className="px-4 py-3.5 border-b border-slate-800 bg-slate-950/60 flex flex-wrap items-start justify-between gap-3">
-        <div className="space-y-1 max-w-4xl">
-          <div className="flex flex-wrap items-center gap-2">
-            <h4 className="text-sm sm:text-base font-bold text-white">
-              {table.benchmarkName}
-            </h4>
-            {table.isSubstitute ? (
-              <span className="px-2 py-0.5 rounded text-[10px] font-bold uppercase bg-amber-500/20 text-amber-300 border border-amber-500/40">
-                Substituto
-              </span>
-            ) : (
-              <span className="px-2 py-0.5 rounded text-[10px] font-bold uppercase bg-emerald-500/15 text-emerald-300 border border-emerald-500/30">
-                Primário
-              </span>
-            )}
-            {table.isBrazilianSpecific && (
-              <span className="px-2 py-0.5 rounded text-[10px] font-bold uppercase bg-amber-500/20 text-amber-200 border border-amber-400/40">
-                BR / EUA
-              </span>
-            )}
-            {table.useCaseLabels.map((label) => (
-              <span
-                key={label}
-                className="px-2 py-0.5 rounded text-[10px] font-medium bg-indigo-500/15 text-indigo-300 border border-indigo-500/30"
-              >
-                {label}
-              </span>
-            ))}
-          </div>
-          <p className="text-xs text-slate-300 leading-relaxed">
-            {table.whatItTests}
-          </p>
-        </div>
-
-        <div className="flex items-center gap-3 shrink-0">
-          <span className="text-[11px] font-mono text-slate-400 bg-slate-900 border border-slate-800 px-2.5 py-1 rounded-lg">
-            {table.rows.length} modelo{table.rows.length === 1 ? '' : 's'} •
-            Melhor → Pior
-          </span>
-          <a
-            href={table.officialUrl}
-            target="_blank"
-            rel="noreferrer"
-            className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-semibold text-indigo-300 bg-indigo-500/10 hover:bg-indigo-500/20 border border-indigo-500/30 transition"
-          >
-            Link Oficial
-            <ExternalLink className="w-3 h-3" />
-          </a>
-        </div>
-      </div>
-
-      {/* Individual Benchmark Ranked Table */}
-      <div className="overflow-x-auto">
-        <table className="w-full text-left border-collapse text-xs">
-          <thead>
-            <tr className="bg-slate-950/80 text-slate-400 border-b border-slate-800 uppercase tracking-wider text-[11px]">
-              <th className="py-2.5 px-3 w-14 text-center">Posição (#)</th>
-              <th className="py-2.5 px-3 min-w-[230px]">Modelo</th>
-              <th className="py-2.5 px-3 min-w-[140px]">Provedor</th>
-              <th className="py-2.5 px-3 min-w-[140px]">Esforço</th>
-              <th className="py-2.5 px-3 text-right min-w-[125px]">
-                Pontuação Real
-              </th>
-              <th className="py-2.5 px-3 text-center min-w-[145px]">
-                Nota Normalizada (0–100)
-              </th>
-              <th className="py-2.5 px-3 text-center min-w-[115px]">Origem</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-slate-800/70">
-            {visibleRows.map((row) => {
-              const isCompared = comparedModelIds.includes(
-                row.modelCanonicalId
-              );
-              return (
-                <tr
-                  key={`${table.benchmarkId}-${row.modelCanonicalId}`}
-                  className={`hover:bg-slate-800/40 transition ${
-                    isCompared ? 'bg-indigo-950/25' : ''
-                  }`}
-                >
-                  <td className="py-2.5 px-3 text-center font-mono font-bold">
-                    <span
-                      className={`inline-flex items-center justify-center w-6 h-6 rounded-full text-[11px] ${
-                        row.rank === 1
-                          ? 'bg-amber-500/25 text-amber-300 border border-amber-500/40'
-                          : row.rank === 2
-                            ? 'bg-slate-400/20 text-slate-200 border border-slate-500/40'
-                            : row.rank === 3
-                              ? 'bg-orange-500/20 text-orange-300 border border-orange-500/40'
-                              : 'text-slate-400'
-                      }`}
-                    >
-                      {row.rank}
-                    </span>
-                  </td>
-
-                  <td className="py-2.5 px-3">
-                    <div className="flex items-center justify-between gap-2">
-                      <span className="font-semibold text-slate-100">
-                        {row.displayName}
-                      </span>
-                      <button
-                        type="button"
-                        onClick={() => onToggleCompare(row.modelCanonicalId)}
-                        className={`px-2 py-0.5 rounded text-[10px] font-semibold border transition cursor-pointer shrink-0 ${
-                          isCompared
-                            ? 'bg-indigo-600 border-indigo-500 text-white'
-                            : 'bg-slate-950 border-slate-700 text-slate-300 hover:border-indigo-400'
-                        }`}
-                      >
-                        {isCompared ? 'Selecionado' : '+ Comparar'}
-                      </button>
-                    </div>
-                  </td>
-
-                  <td className="py-2.5 px-3">
-                    <span className="px-2 py-0.5 rounded bg-slate-800 text-slate-200 text-[11px] font-medium">
-                      {row.provider}
-                    </span>
-                  </td>
-
-                  <td className="py-2.5 px-3 text-slate-300 text-[11px]">
-                    {row.effort === 'default'
-                      ? 'Padrão do benchmark'
-                      : EFFORT_LABELS[row.effort] ?? row.effort}
-                  </td>
-
-                  <td className="py-2.5 px-3 text-right font-mono font-bold text-slate-100">
-                    {row.displayScore}
-                  </td>
-
-                  <td className="py-2.5 px-3">
-                    <div className="flex items-center justify-center gap-2">
-                      <span className="font-mono font-bold text-emerald-400 w-10 text-right">
-                        {row.normalizedScore.toFixed(1)}
-                      </span>
-                      <div className="w-16 h-1.5 bg-slate-800 rounded-full overflow-hidden">
-                        <div
-                          className="h-full bg-emerald-500"
-                          style={{
-                            width: `${Math.min(100, Math.max(0, row.normalizedScore))}%`,
-                          }}
-                        />
-                      </div>
-                    </div>
-                  </td>
-
-                  <td className="py-2.5 px-3 text-center">
-                    <a
-                      href={row.sourceUrl}
-                      target="_blank"
-                      rel="noreferrer"
-                      className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold border transition ${
-                        row.originType === 'manual'
-                          ? 'bg-amber-500/15 text-amber-300 border-amber-500/40 hover:bg-amber-500/25'
-                          : 'bg-emerald-500/15 text-emerald-300 border-emerald-500/30 hover:bg-emerald-500/25'
-                      }`}
-                      title="Abrir fonte do registro"
-                    >
-                      {row.originType === 'manual' ? 'Manual' : 'Ao vivo'}
-                      <ExternalLink className="w-2.5 h-2.5" />
-                    </a>
-                  </td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
-      </div>
-
-      {hasMore && (
-        <div className="px-4 py-2 bg-slate-950/60 border-t border-slate-800 flex justify-center">
-          <button
-            type="button"
-            onClick={() => setExpanded((v) => !v)}
-            className="text-xs font-semibold text-indigo-300 hover:text-indigo-200 cursor-pointer"
-          >
-            {expanded
-              ? `Recolher para Top ${defaultRowLimit}`
-              : `Ver todos os ${table.rows.length} modelos neste benchmark (+${table.rows.length - defaultRowLimit})`}
-          </button>
-        </div>
-      )}
-    </div>
-  );
-}
-
 export function App() {
   const [state, setState] = useState<ApiStateResponse | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
@@ -382,6 +133,12 @@ export function App() {
   const [compareTableScope, setCompareTableScope] =
     useState<TableModelScope>('compared');
   const [selectedUseCaseFilter, setSelectedUseCaseFilter] =
+    useState<string>('all');
+  const [overallBenchmarkFilter, setOverallBenchmarkFilter] =
+    useState<string>('overall');
+  const [overallUseCaseSort, setOverallUseCaseSort] =
+    useState<string>('overall');
+  const [homeBenchmarkSelect, setHomeBenchmarkSelect] =
     useState<string>('all');
 
   // Manual Import state
@@ -511,7 +268,7 @@ export function App() {
   }, [frontierDiagnostics]);
 
   // =========================================================================
-  // 2. ACTIVE DISCOVERED PROVIDERS (FROM QUALIFIED FRONTIER BENCHMARKS)
+  // 2. ACTIVE DISCOVERED PROVIDERS (STRICTLY CURRENT FRONTIER MODELS)
   // =========================================================================
   const { featuredActiveProviders, otherActiveProviders, modelProviderMap } =
     useMemo(() => {
@@ -521,8 +278,14 @@ export function App() {
         for (const s of state.scores) {
           if (s.modelCanonicalId === 'human') continue;
           if (!qualifiedBenchmarkIds.has(s.benchmarkId)) continue;
+          if (!isFrontierModel(s.modelCanonicalId, s.modelDisplayName)) {
+            continue;
+          }
           const provider = resolveScoreProvider(s);
-          provMap.set(s.modelCanonicalId, provider);
+          const existing = provMap.get(s.modelCanonicalId);
+          if (!existing || existing === 'Outros / Independente') {
+            provMap.set(s.modelCanonicalId, provider);
+          }
           if (!counts.has(provider)) counts.set(provider, new Set());
           counts.get(provider)!.add(s.modelCanonicalId);
         }
@@ -550,8 +313,31 @@ export function App() {
     featuredActiveProviders.length + otherActiveProviders.length;
 
   // =========================================================================
-  // 3. COMPOSITE OVERALL RANKING (TOP 4 PER PROVIDER + STRICT PROVIDER FILTER)
+  // 3. COMPOSITE OVERALL RANKING (FRONTIER ONLY • TOP 4 PER PROVIDER)
   // =========================================================================
+  const allFrontierModelsMap = useMemo(() => {
+    if (!state) return new Map<string, ReturnType<typeof calculateOverallRanking>[number]>();
+    const all = calculateOverallRanking(state.scores, {
+      weights,
+      includeSubstitutes,
+      preferredEffort: globalEffort,
+      modelEffortOverrides,
+      providerFilter: selectedProviders,
+      qualifiedBenchmarkIds,
+      onlyFrontierModels: true,
+      maxModelsPerProvider: null,
+    });
+    return new Map(all.map((m) => [m.modelCanonicalId, m]));
+  }, [
+    state,
+    weights,
+    includeSubstitutes,
+    globalEffort,
+    modelEffortOverrides,
+    selectedProviders,
+    qualifiedBenchmarkIds,
+  ]);
+
   const rankedModels = useMemo(() => {
     if (!state) return [];
     const top4Ranked = calculateOverallRanking(state.scores, {
@@ -561,17 +347,31 @@ export function App() {
       modelEffortOverrides,
       providerFilter: selectedProviders,
       qualifiedBenchmarkIds,
+      onlyFrontierModels: true,
       maxModelsPerProvider: MAX_MODELS_PER_PROVIDER,
     });
 
-    if (!searchQuery.trim()) return top4Ranked;
-    const q = searchQuery.toLowerCase().trim();
-    return top4Ranked.filter(
-      (m) =>
-        m.displayName.toLowerCase().includes(q) ||
-        m.provider.toLowerCase().includes(q) ||
-        m.modelCanonicalId.toLowerCase().includes(q)
-    );
+    const filtered = !searchQuery.trim()
+      ? top4Ranked
+      : top4Ranked.filter((m) => {
+          const q = searchQuery.toLowerCase().trim();
+          return (
+            m.displayName.toLowerCase().includes(q) ||
+            m.provider.toLowerCase().includes(q) ||
+            m.modelCanonicalId.toLowerCase().includes(q)
+          );
+        });
+
+    if (overallUseCaseSort === 'overall') {
+      return filtered;
+    }
+
+    return [...filtered].sort((a, b) => {
+      const aScore = a.useCaseScores[overallUseCaseSort]?.score ?? -1;
+      const bScore = b.useCaseScores[overallUseCaseSort]?.score ?? -1;
+      if (bScore !== aScore) return bScore - aScore;
+      return b.overallScore - a.overallScore;
+    });
   }, [
     state,
     weights,
@@ -581,30 +381,21 @@ export function App() {
     selectedProviders,
     qualifiedBenchmarkIds,
     searchQuery,
+    overallUseCaseSort,
   ]);
 
-  // Synchronously filter comparedModelIds against selectedProviders to guarantee ZERO leakage
+  // Synchronously filter comparedModelIds against selectedProviders without destructively wiping user picks
   const validComparedModelIds = useMemo(() => {
-    if (selectedProviders.length === 0) return comparedModelIds;
+    const frontierOnly = comparedModelIds.filter((id) =>
+      modelProviderMap.has(id)
+    );
+    if (selectedProviders.length === 0) return frontierOnly;
     const allowedSet = new Set(selectedProviders);
-    return comparedModelIds.filter((id) => {
+    return frontierOnly.filter((id) => {
       const prov = modelProviderMap.get(id);
       return prov != null && allowedSet.has(prov);
     });
   }, [comparedModelIds, selectedProviders, modelProviderMap]);
-
-  // Automatically prune comparedModelIds state whenever selectedProviders changes
-  useEffect(() => {
-    if (selectedProviders.length === 0) return;
-    const allowedSet = new Set(selectedProviders);
-    setComparedModelIds((prev) => {
-      const filtered = prev.filter((id) => {
-        const prov = modelProviderMap.get(id);
-        return prov != null && allowedSet.has(prov);
-      });
-      return filtered.length === prev.length ? prev : filtered;
-    });
-  }, [selectedProviders, modelProviderMap]);
 
   // Pre-select top 5 frontier models with highest coverage on first load only
   const [hasInitializedCompare, setHasInitializedCompare] = useState(false);
@@ -624,16 +415,25 @@ export function App() {
     }
   }, [rankedModels, comparedModelIds.length, hasInitializedCompare]);
 
-  // Reset scope to 'all' if user clears all marked models while in 'compared' mode
+  // Reset home scope to 'all' if user clears all marked models while in 'compared' mode
   useEffect(() => {
     if (validComparedModelIds.length === 0 && homeTableScope === 'compared') {
       setHomeTableScope('all');
     }
   }, [validComparedModelIds.length, homeTableScope]);
 
-  // Strictly filtered compared entries (respecting selectedProviders, Top 4/provider, frontier benchmarks)
+  // Effective compare scope falls back to 'all' if no marked model matches current provider filter
+  const effectiveCompareScope: TableModelScope =
+    compareTableScope === 'compared' && validComparedModelIds.length > 0
+      ? 'compared'
+      : 'all';
+
+  // Strictly filtered compared entries (falls back to active Top 4/provider frontier models when none marked)
   const comparedEntries = useMemo(() => {
-    if (!state || validComparedModelIds.length === 0) return [];
+    if (!state) return [];
+    if (effectiveCompareScope === 'all' || validComparedModelIds.length === 0) {
+      return rankedModels;
+    }
     const ranked = calculateOverallRanking(state.scores, {
       weights,
       includeSubstitutes,
@@ -642,6 +442,7 @@ export function App() {
       providerFilter: selectedProviders,
       selectedModelIds: validComparedModelIds,
       qualifiedBenchmarkIds,
+      onlyFrontierModels: true,
       maxModelsPerProvider: MAX_MODELS_PER_PROVIDER,
     });
     const map = new Map(ranked.map((m) => [m.modelCanonicalId, m]));
@@ -650,6 +451,8 @@ export function App() {
       .filter((x): x is NonNullable<typeof x> => Boolean(x));
   }, [
     state,
+    effectiveCompareScope,
+    rankedModels,
     weights,
     includeSubstitutes,
     globalEffort,
@@ -660,7 +463,7 @@ export function App() {
   ]);
 
   // =========================================================================
-  // 4. PER-BENCHMARK RANKING TABLES (SEPARATE TABLE PER BENCHMARK, BEST->WORST)
+  // 4. PER-BENCHMARK RANKING TABLES (FRONTIER ONLY • TOP 4/PROVIDER • BEST->WORST)
   // =========================================================================
   const homeBenchmarkTables = useMemo(() => {
     if (!state) return [];
@@ -673,6 +476,7 @@ export function App() {
       providerFilter: selectedProviders,
       selectedModelIds: useMarkedOnly ? validComparedModelIds : undefined,
       qualifiedBenchmarkIds,
+      onlyFrontierModels: true,
       maxModelsPerProvider: MAX_MODELS_PER_PROVIDER,
       searchQuery,
     });
@@ -688,13 +492,36 @@ export function App() {
     searchQuery,
   ]);
 
+  // Active benchmark table when filtering the main Classificação Geral table by a specific benchmark
+  const overallSelectedBenchmarkTable = useMemo(() => {
+    if (!state || overallBenchmarkFilter === 'overall') return null;
+    const tables = buildPerBenchmarkRankings(state.scores, {
+      includeSubstitutes: true,
+      preferredEffort: globalEffort,
+      modelEffortOverrides,
+      providerFilter: selectedProviders,
+      qualifiedBenchmarkIds,
+      onlyFrontierModels: true,
+      maxModelsPerProvider: MAX_MODELS_PER_PROVIDER,
+      searchQuery,
+    });
+    return (
+      tables.find((t) => t.benchmarkId === overallBenchmarkFilter) ?? null
+    );
+  }, [
+    state,
+    overallBenchmarkFilter,
+    globalEffort,
+    modelEffortOverrides,
+    selectedProviders,
+    qualifiedBenchmarkIds,
+    searchQuery,
+  ]);
+
   const compareBenchmarkTables = useMemo(() => {
     if (!state) return [];
     const useMarkedOnly =
-      compareTableScope === 'compared' && validComparedModelIds.length > 0;
-    if (compareTableScope === 'compared' && validComparedModelIds.length === 0) {
-      return [];
-    }
+      effectiveCompareScope === 'compared' && validComparedModelIds.length > 0;
     return buildPerBenchmarkRankings(state.scores, {
       includeSubstitutes,
       preferredEffort: globalEffort,
@@ -702,12 +529,13 @@ export function App() {
       providerFilter: selectedProviders,
       selectedModelIds: useMarkedOnly ? validComparedModelIds : undefined,
       qualifiedBenchmarkIds,
+      onlyFrontierModels: true,
       maxModelsPerProvider: MAX_MODELS_PER_PROVIDER,
       searchQuery,
     });
   }, [
     state,
-    compareTableScope,
+    effectiveCompareScope,
     validComparedModelIds,
     includeSubstitutes,
     globalEffort,
@@ -726,6 +554,7 @@ export function App() {
       modelEffortOverrides,
       providerFilter: selectedProviders,
       qualifiedBenchmarkIds,
+      onlyFrontierModels: true,
       maxModelsPerProvider: MAX_MODELS_PER_PROVIDER,
     });
     return new Map(tables.map((t) => [t.benchmarkId, t]));
@@ -781,8 +610,17 @@ export function App() {
 
     if (filteredByUc.length === 0) {
       return (
-        <div className="bg-slate-900 border border-slate-800 rounded-xl p-8 text-center text-slate-400 text-xs">
-          {emptyMessage}
+        <div className="bg-slate-900 border border-slate-800 rounded-xl p-8 text-center text-slate-400 text-xs space-y-3">
+          <div>{emptyMessage}</div>
+          {selectedUseCaseFilter !== 'all' && (
+            <button
+              type="button"
+              onClick={() => setSelectedUseCaseFilter('all')}
+              className="px-3 py-1.5 rounded-lg bg-indigo-600 text-white font-semibold cursor-pointer"
+            >
+              Exibir todos os 7 Casos de Uso
+            </button>
+          )}
         </div>
       );
     }
@@ -1359,21 +1197,76 @@ export function App() {
 
             {/* COMPOSITE OVERALL RANKING SUMMARY TABLE */}
             <div className="bg-slate-900 border border-slate-800 rounded-xl overflow-hidden shadow-xl">
-              <div className="px-4 py-3 border-b border-slate-800 flex flex-wrap items-center justify-between gap-2">
+              <div className="px-4 py-3 border-b border-slate-800 flex flex-wrap items-center justify-between gap-3">
                 <div>
                   <h2 className="text-base font-bold text-white flex items-center gap-2">
                     <Award className="w-5 h-5 text-indigo-400" />
-                    Resumo da Classificação Geral Composta (0–100)
+                    {overallSelectedBenchmarkTable
+                      ? `Classificação por Benchmark: ${overallSelectedBenchmarkTable.benchmarkName} (Melhor → Pior)`
+                      : 'Resumo da Classificação Geral Composta (0–100)'}
                   </h2>
                   <p className="text-xs text-slate-400">
-                    Exibindo {Math.min(rankedModels.length, 80)} de{' '}
-                    {rankedModels.length} modelos (máx. {MAX_MODELS_PER_PROVIDER}{' '}
-                    melhores por provedor • apenas{' '}
-                    {qualifiedBenchmarkIds.size} benchmarks qualificados de
-                    fronteira).
+                    {overallSelectedBenchmarkTable
+                      ? `Exibindo ${Math.min(overallSelectedBenchmarkTable.rows.length, 80)} de ${overallSelectedBenchmarkTable.rows.length} modelos de fronteira avaliados neste benchmark (máx. ${MAX_MODELS_PER_PROVIDER}/provedor • Melhor → Pior).`
+                      : `Exibindo ${Math.min(rankedModels.length, 80)} de ${rankedModels.length} modelos de fronteira atuais (máx. ${MAX_MODELS_PER_PROVIDER} melhores por provedor • ${qualifiedBenchmarkIds.size} benchmarks qualificados).`}
                   </p>
                 </div>
-                <div className="flex items-center gap-2 text-xs">
+
+                <div className="flex flex-wrap items-center gap-2 text-xs">
+                  <div className="flex items-center gap-1.5">
+                    <Filter className="w-3.5 h-3.5 text-indigo-400 shrink-0" />
+                    <select
+                      aria-label="Filtrar e ordenar Classificação Geral por Benchmark"
+                      value={overallBenchmarkFilter}
+                      onChange={(e) => {
+                        setOverallBenchmarkFilter(e.target.value);
+                        if (e.target.value !== 'overall') {
+                          setOverallUseCaseSort('overall');
+                        }
+                      }}
+                      className="bg-slate-950 border border-indigo-500/40 rounded-lg px-2.5 py-1.5 text-xs text-slate-100 focus:outline-none focus:border-indigo-400 max-w-[280px]"
+                    >
+                      <option value="overall">
+                        Classificação Geral Composta (Todos)
+                      </option>
+                      <optgroup label="Benchmarks Primários de Fronteira">
+                        {(state?.benchmarks ?? [])
+                          .filter(
+                            (b) =>
+                              !b.isSubstitute &&
+                              qualifiedBenchmarkIds.has(b.id)
+                          )
+                          .map((b) => (
+                            <option key={b.id} value={b.id}>
+                              {b.name}
+                            </option>
+                          ))}
+                      </optgroup>
+                      <optgroup label="Benchmarks Substitutos Qualificados">
+                        {(state?.benchmarks ?? [])
+                          .filter(
+                            (b) =>
+                              b.isSubstitute && qualifiedBenchmarkIds.has(b.id)
+                          )
+                          .map((b) => (
+                            <option key={b.id} value={b.id}>
+                              {b.name} (Substituto)
+                            </option>
+                          ))}
+                      </optgroup>
+                    </select>
+                  </div>
+
+                  {overallBenchmarkFilter !== 'overall' && (
+                    <button
+                      type="button"
+                      onClick={() => setOverallBenchmarkFilter('overall')}
+                      className="px-2.5 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 cursor-pointer"
+                    >
+                      Limpar filtro de benchmark
+                    </button>
+                  )}
+
                   <button
                     type="button"
                     onClick={() => setActiveTab('compare')}
@@ -1384,10 +1277,12 @@ export function App() {
                 </div>
               </div>
 
-              {rankedModels.length === 0 ? (
+              {(overallSelectedBenchmarkTable
+                ? overallSelectedBenchmarkTable.rows.length === 0
+                : rankedModels.length === 0) ? (
                 <div className="p-8 text-center text-xs text-slate-400">
-                  Nenhum modelo encontrado para o filtro atual de provedores /
-                  busca.
+                  Nenhum modelo de fronteira encontrado para o filtro atual de
+                  provedores / benchmark / busca.
                 </div>
               ) : (
                 <div className="overflow-x-auto">
@@ -1401,8 +1296,31 @@ export function App() {
                         <th className="py-3 px-3 min-w-[165px]">
                           Nível de Esforço
                         </th>
-                        <th className="py-3 px-3 text-center min-w-[110px]">
+                        {overallSelectedBenchmarkTable && (
+                          <th className="py-3 px-3 text-center min-w-[140px] bg-indigo-950/40 text-indigo-200 border-x border-indigo-500/30">
+                            <div>{overallSelectedBenchmarkTable.shortName}</div>
+                            <div className="text-[10px] font-normal text-indigo-300">
+                              Melhor → Pior
+                            </div>
+                          </th>
+                        )}
+                        <th
+                          onClick={() => {
+                            if (!overallSelectedBenchmarkTable) {
+                              setOverallUseCaseSort('overall');
+                            }
+                          }}
+                          className={`py-3 px-3 text-center min-w-[110px] ${
+                            !overallSelectedBenchmarkTable
+                              ? 'cursor-pointer hover:text-white'
+                              : ''
+                          }`}
+                          title="Ordenar pela Nota Geral Composta"
+                        >
                           Nota Geral (0–100)
+                          {!overallSelectedBenchmarkTable &&
+                            overallUseCaseSort === 'overall' &&
+                            ' ▼'}
                         </th>
                         <th className="py-3 px-3 text-center min-w-[135px]">
                           Cobertura (Casos / Benchs)
@@ -1410,11 +1328,28 @@ export function App() {
                         {USE_CASES.map((uc) => (
                           <th
                             key={uc.id}
-                            className="py-3 px-2.5 text-center min-w-[110px]"
-                            title={uc.title}
+                            onClick={() => {
+                              if (!overallSelectedBenchmarkTable) {
+                                setOverallUseCaseSort(uc.id);
+                              }
+                            }}
+                            className={`py-3 px-2.5 text-center min-w-[110px] ${
+                              !overallSelectedBenchmarkTable
+                                ? 'cursor-pointer hover:text-white'
+                                : ''
+                            } ${
+                              overallUseCaseSort === uc.id &&
+                              !overallSelectedBenchmarkTable
+                                ? 'bg-indigo-950/40 text-indigo-200'
+                                : ''
+                            }`}
+                            title={`${uc.title} — Clique para ordenar`}
                           >
                             <div className="font-bold text-slate-300">
                               Caso {uc.number}
+                              {!overallSelectedBenchmarkTable &&
+                                overallUseCaseSort === uc.id &&
+                                ' ▼'}
                             </div>
                             <div className="text-[10px] font-normal text-slate-500 truncate max-w-[105px]">
                               {uc.shortTitle.replace(/^\d+\.\s*/, '')}
@@ -1427,43 +1362,60 @@ export function App() {
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-800/70">
-                      {rankedModels.slice(0, 80).map((entry, idx) => {
-                        const isCompared = validComparedModelIds.includes(
-                          entry.modelCanonicalId
-                        );
-                        const hasMultipleEfforts =
-                          entry.availableEfforts.length > 1;
-                        const currentOverride =
-                          modelEffortOverrides[entry.modelCanonicalId];
+                      {(overallSelectedBenchmarkTable
+                        ? overallSelectedBenchmarkTable.rows
+                            .slice(0, 80)
+                            .map((bRow) => ({
+                              entry: allFrontierModelsMap.get(
+                                bRow.modelCanonicalId
+                              ),
+                              bRow,
+                            }))
+                        : rankedModels
+                            .slice(0, 80)
+                            .map((entry) => ({ entry, bRow: null }))
+                      ).map(({ entry, bRow }, idx) => {
+                        const modelId =
+                          bRow?.modelCanonicalId ?? entry!.modelCanonicalId;
+                        const displayName =
+                          bRow?.displayName ?? entry!.displayName;
+                        const provider = bRow?.provider ?? entry!.provider;
+                        const isCompared =
+                          validComparedModelIds.includes(modelId);
+                        const availableEfforts = entry?.availableEfforts ?? [
+                          bRow?.effort ?? 'default',
+                        ];
+                        const hasMultipleEfforts = availableEfforts.length > 1;
+                        const currentOverride = modelEffortOverrides[modelId];
+                        const selectedEffort =
+                          bRow?.effort ?? entry?.selectedEffort ?? 'default';
 
                         return (
                           <tr
-                            key={entry.modelCanonicalId}
+                            key={modelId}
                             className={`hover:bg-slate-800/40 transition ${
                               isCompared ? 'bg-indigo-950/25' : ''
                             }`}
                           >
                             <td className="py-3 px-3 text-center font-mono font-bold text-slate-400">
-                              {idx + 1}
+                              {bRow ? bRow.rank : idx + 1}
                             </td>
 
                             <td className="py-3 px-3">
                               <div className="flex items-center justify-between gap-2">
                                 <div>
                                   <div className="font-bold text-slate-100 text-sm">
-                                    {entry.displayName}
+                                    {displayName}
                                   </div>
                                   <div className="text-[11px] text-slate-400 flex items-center gap-1.5 mt-0.5">
                                     <span className="px-1.5 py-0.2 rounded bg-slate-800 text-slate-300">
-                                      {entry.provider}
+                                      {provider}
                                     </span>
                                   </div>
                                 </div>
                                 <button
                                   type="button"
-                                  onClick={() =>
-                                    toggleModelCompare(entry.modelCanonicalId)
-                                  }
+                                  onClick={() => toggleModelCompare(modelId)}
                                   className={`px-2 py-1 rounded text-[11px] font-semibold border transition cursor-pointer ${
                                     isCompared
                                       ? 'bg-indigo-600 border-indigo-500 text-white'
@@ -1485,10 +1437,9 @@ export function App() {
                                     setModelEffortOverrides((prev) => {
                                       const next = { ...prev };
                                       if (val === 'best') {
-                                        delete next[entry.modelCanonicalId];
+                                        delete next[modelId];
                                       } else {
-                                        next[entry.modelCanonicalId] =
-                                          val as EffortLevel;
+                                        next[modelId] = val as EffortLevel;
                                       }
                                       return next;
                                     });
@@ -1496,9 +1447,9 @@ export function App() {
                                   className="w-full bg-slate-950 border border-indigo-500/40 rounded px-2 py-1 text-[11px] text-indigo-200 font-medium"
                                 >
                                   <option value="best">
-                                    Melhor ({entry.availableEfforts.join(', ')})
+                                    Melhor ({availableEfforts.join(', ')})
                                   </option>
-                                  {entry.availableEfforts.map((eff) => (
+                                  {availableEfforts.map((eff) => (
                                     <option key={eff} value={eff}>
                                       {EFFORT_LABELS[eff]} ({eff})
                                     </option>
@@ -1506,53 +1457,81 @@ export function App() {
                                 </select>
                               ) : (
                                 <span className="inline-flex items-center px-2 py-1 rounded bg-slate-950 border border-slate-800 text-slate-400 text-[11px]">
-                                  {entry.selectedEffort === 'default'
+                                  {selectedEffort === 'default'
                                     ? 'Padrão do benchmark'
-                                    : EFFORT_LABELS[entry.selectedEffort]}
+                                    : EFFORT_LABELS[selectedEffort]}
                                 </span>
                               )}
                             </td>
 
+                            {/* Highlighted Selected Benchmark Score */}
+                            {overallSelectedBenchmarkTable && bRow && (
+                              <td className="py-3 px-3 text-center bg-indigo-950/20 border-x border-indigo-500/20">
+                                <div className="inline-flex flex-col items-center">
+                                  <span className="text-base font-extrabold font-mono text-indigo-300">
+                                    {bRow.displayScore}
+                                  </span>
+                                  <span className="text-[10px] text-slate-400">
+                                    {bRow.effort === 'default'
+                                      ? 'Padrão'
+                                      : EFFORT_LABELS[bRow.effort]}
+                                  </span>
+                                </div>
+                              </td>
+                            )}
+
                             {/* Overall Score */}
                             <td className="py-3 px-3 text-center">
-                              <div className="inline-flex flex-col items-center">
-                                <span className="text-base font-extrabold font-mono text-emerald-400">
-                                  {entry.overallScore.toFixed(1)}
-                                </span>
-                                <div className="w-16 h-1.5 bg-slate-800 rounded-full overflow-hidden mt-1">
-                                  <div
-                                    className="h-full bg-emerald-500"
-                                    style={{
-                                      width: `${Math.min(
-                                        100,
-                                        entry.overallScore
-                                      )}%`,
-                                    }}
-                                  />
+                              {entry ? (
+                                <div className="inline-flex flex-col items-center">
+                                  <span className="text-base font-extrabold font-mono text-emerald-400">
+                                    {entry.overallScore.toFixed(1)}
+                                  </span>
+                                  <div className="w-16 h-1.5 bg-slate-800 rounded-full overflow-hidden mt-1">
+                                    <div
+                                      className="h-full bg-emerald-500"
+                                      style={{
+                                        width: `${Math.min(
+                                          100,
+                                          entry.overallScore
+                                        )}%`,
+                                      }}
+                                    />
+                                  </div>
                                 </div>
-                              </div>
+                              ) : (
+                                <span className="text-slate-600 font-mono">
+                                  —
+                                </span>
+                              )}
                             </td>
 
                             {/* Coverage */}
                             <td className="py-3 px-3 text-center">
-                              <div className="font-mono font-semibold text-slate-200">
-                                {entry.useCasesCovered}/{entry.totalUseCases}{' '}
-                                casos
-                              </div>
-                              <div className="text-[11px] text-slate-400">
-                                {entry.primaryBenchmarksCovered}/
-                                {entry.totalPrimaryBenchmarks} primários
-                                {entry.substituteBenchmarksUsed > 0 && (
-                                  <span className="ml-1 text-amber-300">
-                                    (+{entry.substituteBenchmarksUsed} sub)
-                                  </span>
-                                )}
-                              </div>
+                              {entry ? (
+                                <>
+                                  <div className="font-mono font-semibold text-slate-200">
+                                    {entry.useCasesCovered}/
+                                    {entry.totalUseCases} casos
+                                  </div>
+                                  <div className="text-[11px] text-slate-400">
+                                    {entry.primaryBenchmarksCovered}/
+                                    {entry.totalPrimaryBenchmarks} primários
+                                    {entry.substituteBenchmarksUsed > 0 && (
+                                      <span className="ml-1 text-amber-300">
+                                        (+{entry.substituteBenchmarksUsed} sub)
+                                      </span>
+                                    )}
+                                  </div>
+                                </>
+                              ) : (
+                                <span className="text-slate-600">—</span>
+                              )}
                             </td>
 
                             {/* Per Use Case Scores */}
                             {USE_CASES.map((uc) => {
-                              const ucData = entry.useCaseScores[uc.id];
+                              const ucData = entry?.useCaseScores[uc.id];
                               if (!ucData || ucData.score === null) {
                                 return (
                                   <td
@@ -1607,7 +1586,7 @@ export function App() {
 
                             {/* Speed / Cost Telemetry */}
                             <td className="py-3 px-3 text-right font-mono text-[11px]">
-                              {entry.telemetry?.outputSpeedTokensPerSec ? (
+                              {entry?.telemetry?.outputSpeedTokensPerSec ? (
                                 <div className="text-cyan-300">
                                   {entry.telemetry.outputSpeedTokensPerSec}{' '}
                                   tok/s
@@ -1615,8 +1594,8 @@ export function App() {
                               ) : (
                                 <div className="text-slate-600">— tok/s</div>
                               )}
-                              {entry.telemetry?.priceInput1M != null &&
-                              entry.telemetry?.priceOutput1M != null ? (
+                              {entry?.telemetry?.priceInput1M != null &&
+                              entry?.telemetry?.priceOutput1M != null ? (
                                 <div className="text-slate-400">
                                   ${entry.telemetry.priceInput1M}/
                                   {entry.telemetry.priceOutput1M} /1M
@@ -1646,39 +1625,57 @@ export function App() {
                     </h2>
                     <p className="text-xs text-slate-400 mt-0.5">
                       Cada benchmark de fronteira qualificado aparece em sua
-                      própria tabela, respeitando Top {MAX_MODELS_PER_PROVIDER}{' '}
-                      por provedor, filtro estrito de provedores e nível de
-                      esforço selecionado.
+                      própria tabela (Top 20 visíveis), respeitando Top{' '}
+                      {MAX_MODELS_PER_PROVIDER} modelos de fronteira por
+                      provedor, filtro estrito e esforço selecionado.
                     </p>
                   </div>
 
-                  {/* Quick Scope Toggle */}
-                  <div className="inline-flex rounded-lg bg-slate-950 border border-slate-800 p-1 text-xs">
-                    <button
-                      type="button"
-                      onClick={() => setHomeTableScope('all')}
-                      className={`px-3 py-1.5 rounded-md font-semibold transition cursor-pointer ${
-                        homeTableScope === 'all'
-                          ? 'bg-indigo-600 text-white'
-                          : 'text-slate-400 hover:text-slate-200'
-                      }`}
+                  {/* Quick Scope Toggle + Benchmark Select */}
+                  <div className="flex flex-wrap items-center gap-2">
+                    <select
+                      aria-label="Filtrar tabela individual por benchmark"
+                      value={homeBenchmarkSelect}
+                      onChange={(e) => setHomeBenchmarkSelect(e.target.value)}
+                      className="bg-slate-950 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-slate-100 focus:outline-none focus:border-indigo-500 max-w-[260px]"
                     >
-                      Todos os modelos dos provedores filtrados (Top{' '}
-                      {MAX_MODELS_PER_PROVIDER}/provedor)
-                    </button>
-                    <button
-                      type="button"
-                      disabled={validComparedModelIds.length === 0}
-                      onClick={() => setHomeTableScope('compared')}
-                      className={`px-3 py-1.5 rounded-md font-semibold transition cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed ${
-                        homeTableScope === 'compared'
-                          ? 'bg-indigo-600 text-white'
-                          : 'text-slate-400 hover:text-slate-200'
-                      }`}
-                    >
-                      Apenas modelos marcados (+ Comparar:{' '}
-                      {validComparedModelIds.length})
-                    </button>
+                      <option value="all">
+                        Todos os benchmarks ativos ({homeBenchmarkTables.length})
+                      </option>
+                      {homeBenchmarkTables.map((t) => (
+                        <option key={t.benchmarkId} value={t.benchmarkId}>
+                          {t.benchmarkName} ({t.rows.length})
+                        </option>
+                      ))}
+                    </select>
+
+                    <div className="inline-flex rounded-lg bg-slate-950 border border-slate-800 p-1 text-xs">
+                      <button
+                        type="button"
+                        onClick={() => setHomeTableScope('all')}
+                        className={`px-3 py-1.5 rounded-md font-semibold transition cursor-pointer ${
+                          homeTableScope === 'all'
+                            ? 'bg-indigo-600 text-white'
+                            : 'text-slate-400 hover:text-slate-200'
+                        }`}
+                      >
+                        Todos os modelos dos provedores filtrados (Top{' '}
+                        {MAX_MODELS_PER_PROVIDER}/provedor)
+                      </button>
+                      <button
+                        type="button"
+                        disabled={validComparedModelIds.length === 0}
+                        onClick={() => setHomeTableScope('compared')}
+                        className={`px-3 py-1.5 rounded-md font-semibold transition cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed ${
+                          homeTableScope === 'compared'
+                            ? 'bg-indigo-600 text-white'
+                            : 'text-slate-400 hover:text-slate-200'
+                        }`}
+                      >
+                        Apenas modelos marcados (+ Comparar:{' '}
+                        {validComparedModelIds.length})
+                      </button>
+                    </div>
                   </div>
                 </div>
 
@@ -1720,7 +1717,11 @@ export function App() {
               </div>
 
               {renderGroupedBenchmarkTables(
-                homeBenchmarkTables,
+                homeBenchmarkSelect === 'all'
+                  ? homeBenchmarkTables
+                  : homeBenchmarkTables.filter(
+                      (t) => t.benchmarkId === homeBenchmarkSelect
+                    ),
                 'Nenhum benchmark ativo possui modelos para os filtros selecionados.'
               )}
             </div>
@@ -1751,6 +1752,18 @@ export function App() {
                   <button
                     type="button"
                     onClick={() => {
+                      setComparedModelIds(
+                        rankedModels.map((m) => m.modelCanonicalId)
+                      );
+                      setCompareTableScope('compared');
+                    }}
+                    className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-emerald-600/20 border border-emerald-500/40 text-emerald-300 hover:bg-emerald-600/30 cursor-pointer"
+                  >
+                    Selecionar Todos Filtrados ({rankedModels.length})
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
                       const highCov = rankedModels
                         .filter((m) => m.useCasesCovered >= 4)
                         .slice(0, 5);
@@ -1768,7 +1781,10 @@ export function App() {
                   </button>
                   <button
                     type="button"
-                    onClick={() => setComparedModelIds([])}
+                    onClick={() => {
+                      setComparedModelIds([]);
+                      setCompareTableScope('all');
+                    }}
                     className="px-3 py-1.5 rounded-lg text-xs font-medium bg-slate-800 text-slate-300 hover:bg-slate-700 cursor-pointer"
                   >
                     Limpar Seleção
@@ -1776,9 +1792,9 @@ export function App() {
                 </div>
               </div>
 
-              {/* Quick Model Selector Pills (strictly filtered & Top 4/provider) */}
-              <div className="flex flex-wrap gap-1.5 max-h-36 overflow-y-auto p-1">
-                {rankedModels.slice(0, 48).map((m) => {
+              {/* Quick Model Selector Pills (strictly frontier & Top 4/provider) */}
+              <div className="flex flex-wrap gap-1.5 max-h-44 overflow-y-auto p-1">
+                {rankedModels.map((m) => {
                   const selected = validComparedModelIds.includes(
                     m.modelCanonicalId
                   );
@@ -1786,7 +1802,12 @@ export function App() {
                     <button
                       type="button"
                       key={m.modelCanonicalId}
-                      onClick={() => toggleModelCompare(m.modelCanonicalId)}
+                      onClick={() => {
+                        toggleModelCompare(m.modelCanonicalId);
+                        if (compareTableScope === 'all') {
+                          setCompareTableScope('compared');
+                        }
+                      }}
                       className={`px-2.5 py-1 rounded-lg text-xs font-medium border transition cursor-pointer flex items-center gap-1.5 ${
                         selected
                           ? 'bg-indigo-600 border-indigo-400 text-white shadow'
@@ -1802,14 +1823,26 @@ export function App() {
                 })}
               </div>
 
+              {compareTableScope === 'compared' &&
+                validComparedModelIds.length === 0 && (
+                  <div className="rounded-lg bg-amber-950/30 border border-amber-500/40 px-3 py-2 text-xs text-amber-200">
+                    Nenhum dos modelos marcados anteriormente pertence aos
+                    provedores filtrados agora — exibindo automaticamente todos
+                    os modelos de fronteira dos provedores selecionados (Top{' '}
+                    {MAX_MODELS_PER_PROVIDER}/provedor). Clique nos modelos
+                    acima para isolar uma seleção específica.
+                  </div>
+                )}
+
               {/* Scope Toggle & Use Case Filter */}
               <div className="pt-3 border-t border-slate-800 flex flex-wrap items-center justify-between gap-3">
                 <div className="inline-flex rounded-lg bg-slate-950 border border-slate-800 p-1 text-xs">
                   <button
                     type="button"
+                    disabled={validComparedModelIds.length === 0}
                     onClick={() => setCompareTableScope('compared')}
-                    className={`px-3 py-1.5 rounded-md font-semibold transition cursor-pointer ${
-                      compareTableScope === 'compared'
+                    className={`px-3 py-1.5 rounded-md font-semibold transition cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed ${
+                      effectiveCompareScope === 'compared'
                         ? 'bg-indigo-600 text-white'
                         : 'text-slate-400 hover:text-slate-200'
                     }`}
@@ -1821,7 +1854,7 @@ export function App() {
                     type="button"
                     onClick={() => setCompareTableScope('all')}
                     className={`px-3 py-1.5 rounded-md font-semibold transition cursor-pointer ${
-                      compareTableScope === 'all'
+                      effectiveCompareScope === 'all'
                         ? 'bg-indigo-600 text-white'
                         : 'text-slate-400 hover:text-slate-200'
                     }`}
@@ -1870,7 +1903,10 @@ export function App() {
             {/* SELECTED MODELS EFFORT & TELEMETRY SUMMARY CARDS */}
             {comparedEntries.length > 0 && (
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-3">
-                {comparedEntries.map((entry) => (
+                {(effectiveCompareScope === 'all'
+                  ? comparedEntries.slice(0, 15)
+                  : comparedEntries
+                ).map((entry) => (
                   <div
                     key={entry.modelCanonicalId}
                     className="bg-slate-900 border border-slate-800 rounded-xl p-3.5 space-y-2.5 shadow"
@@ -1960,627 +1996,39 @@ export function App() {
             {/* SEPARATE RANKED TABLE PER BENCHMARK */}
             {renderGroupedBenchmarkTables(
               compareBenchmarkTables,
-              compareTableScope === 'compared' &&
-                validComparedModelIds.length === 0
-                ? 'Marque ao menos um modelo acima (ou clique em "Todos os modelos dos provedores filtrados") para visualizar as tabelas individuais por benchmark.'
-                : 'Nenhum benchmark ativo possui pontuações para os modelos selecionados com os filtros atuais.'
+              'Nenhum benchmark ativo possui pontuações para os modelos selecionados com os filtros atuais.'
             )}
           </section>
         )}
 
-        {/* ===================================================================== */}
-        {/* TAB 3: OS 7 CASOS DE USO (FRONTIER-QUALIFIED & STRICT PROVIDER FILTER) */}
-        {/* ===================================================================== */}
         {activeTab === 'use-cases' && (
-          <section className="space-y-6">
-            {/* DESTAQUE CONTÁBIL E TRIBUTÁRIO BRASILEIRO */}
-            <div className="bg-gradient-to-r from-amber-950/50 via-slate-900 to-slate-900 border border-amber-500/40 rounded-xl p-5 space-y-3 shadow-lg">
-              <div className="flex items-center gap-2.5 text-amber-300 font-bold text-base">
-                <ShieldAlert className="w-6 h-6 text-amber-400 shrink-0" />
-                Ponto de Atenção Obrigatório: Contabilidade e Direito Tributário
-                Brasileiro (Itens 1 e 2)
-              </div>
-              <p className="text-xs sm:text-sm text-slate-200 leading-relaxed">
-                Benchmarks internacionais como o{' '}
-                <strong>Vals Legal Research Bench</strong> e o{' '}
-                <strong>LegalBench</strong> avaliam majoritariamente o sistema
-                jurídico norte-americano (Common Law e Internal Revenue Code) e{' '}
-                <strong className="text-amber-300">
-                  NÃO cobrem nuances críticas da legislação contábil e fiscal
-                  brasileira
-                </strong>
-                , tais como:
-              </p>
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-3 pt-1">
-                <div className="bg-slate-950/80 border border-amber-500/30 rounded-lg p-3">
-                  <div className="font-bold text-xs text-amber-300">
-                    1. Obrigações Acessórias & SPED
-                  </div>
-                  <p className="text-xs text-slate-300 mt-1">
-                    Cruzamento de blocos e registros do SPED (ECD, ECF,
-                    EFD-ICMS/IPI, EFD-Contribuições, EFD-Reinf e MIT) e regras
-                    da Receita Federal do Brasil.
-                  </p>
-                </div>
-                <div className="bg-slate-950/80 border border-amber-500/30 rounded-lg p-3">
-                  <div className="font-bold text-xs text-amber-300">
-                    2. Simples Nacional & Regimes Tributários
-                  </div>
-                  <p className="text-xs text-slate-300 mt-1">
-                    Cálculo de Fator R, anexos da LC 123/2006, sublimites
-                    estaduais, substituição tributária (ICMS-ST / MVA) e
-                    equiparação hospitalar no Lucro Presumido.
-                  </p>
-                </div>
-                <div className="bg-slate-950/80 border border-amber-500/30 rounded-lg p-3">
-                  <div className="font-bold text-xs text-amber-300">
-                    3. Reforma Tributária BR & Trava Anti-Revogação
-                  </div>
-                  <p className="text-xs text-slate-300 mt-1">
-                    Regras de transição da EC 132/2023 e LC 214/2025 (IBS, CBS e
-                    Imposto Seletivo). O{' '}
-                    <strong>
-                      LLM Benchmark for Accountants and Lawyers
-                    </strong>{' '}
-                    aplica trava rígida penalizando qualquer citação de
-                    instrução normativa ou lei revogada.
-                  </p>
-                </div>
-              </div>
-            </div>
-
-            {/* 7 USE CASES CARDS — ONLY FRONTIER-QUALIFIED BENCHMARKS & STRICT FILTER */}
-            <div className="space-y-6">
-              {USE_CASES.map((uc) => {
-                const qualifiedPrimaries = uc.primaryBenchmarkIds
-                  .filter((id) => qualifiedBenchmarkIds.has(id))
-                  .map((id) => state?.benchmarks.find((b) => b.id === id))
-                  .filter((b): b is BenchmarkDefinition => Boolean(b));
-
-                const qualifiedSubstitutes = uc.substituteBenchmarkIds
-                  .filter((id) => qualifiedBenchmarkIds.has(id))
-                  .map((id) => state?.benchmarks.find((b) => b.id === id))
-                  .filter((b): b is BenchmarkDefinition => Boolean(b));
-
-                const displayBenchmarks =
-                  qualifiedPrimaries.length > 0
-                    ? qualifiedPrimaries
-                    : qualifiedSubstitutes;
-
-                return (
-                  <div
-                    key={uc.id}
-                    className="bg-slate-900 border border-slate-800 rounded-xl p-5 space-y-4 shadow-lg"
-                  >
-                    <div className="flex flex-wrap items-start justify-between gap-4 border-b border-slate-800 pb-4">
-                      <div>
-                        <span className="text-xs font-bold uppercase tracking-wider text-indigo-400">
-                          Caso de Uso #{uc.number}
-                        </span>
-                        <h3 className="text-lg font-bold text-white mt-0.5">
-                          {uc.title}
-                        </h3>
-                        <p className="text-xs text-slate-300 mt-1">
-                          {uc.practicalContext}
-                        </p>
-                      </div>
-                      <div className="flex flex-wrap gap-1.5">
-                        {qualifiedSubstitutes.map((sub) => (
-                          <span
-                            key={sub.id}
-                            className="px-2.5 py-1 rounded-full text-[11px] bg-amber-500/15 text-amber-300 border border-amber-500/30"
-                          >
-                            Substituto Ativo: {sub.shortName}
-                          </span>
-                        ))}
-                      </div>
-                    </div>
-
-                    {uc.brazilianCaveat && (
-                      <div className="bg-amber-950/25 border border-amber-500/30 rounded-lg p-3 text-xs text-amber-200 flex items-start gap-2">
-                        <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
-                        <span>{uc.brazilianCaveat}</span>
-                      </div>
-                    )}
-
-                    {qualifiedPrimaries.length === 0 && (
-                      <div className="bg-slate-950 border border-amber-500/30 rounded-lg p-3 text-xs text-amber-200/90">
-                        Os benchmarks primários deste caso de uso foram
-                        ocultados automaticamente por ausência de modelos atuais
-                        de fronteira ou falta de dados públicos. Exibindo abaixo
-                        apenas os <strong>substitutos qualificados</strong> com
-                        cobertura de fronteira ativa.
-                      </div>
-                    )}
-
-                    {/* Qualified Benchmarks Grid */}
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                      {displayBenchmarks.map((bench) => {
-                        const table = allActiveBenchmarkTablesMap.get(bench.id);
-                        const rows = table?.rows ?? [];
-
-                        return (
-                          <div
-                            key={bench.id}
-                            className="bg-slate-950 border border-slate-800 rounded-lg p-4 flex flex-col justify-between space-y-3"
-                          >
-                            <div className="space-y-2">
-                              <div className="flex items-start justify-between gap-2">
-                                <h4 className="font-bold text-sm text-white">
-                                  {bench.name}
-                                </h4>
-                                <span
-                                  className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase shrink-0 ${
-                                    bench.isSubstitute
-                                      ? 'bg-amber-500/20 text-amber-300 border border-amber-500/30'
-                                      : 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
-                                  }`}
-                                >
-                                  {bench.isSubstitute
-                                    ? 'Substituto'
-                                    : 'Primário'}
-                                </span>
-                              </div>
-
-                              <p className="text-xs text-slate-300 leading-relaxed">
-                                <strong>O que mede:</strong> {bench.whatItTests}
-                              </p>
-                              <p className="text-[11px] text-slate-400 leading-relaxed">
-                                {bench.practicalExplanation}
-                              </p>
-
-                              {bench.jurisdictionNote && (
-                                <div className="p-2 rounded bg-amber-950/30 border border-amber-500/30 text-[11px] text-amber-200">
-                                  {bench.jurisdictionNote}
-                                </div>
-                              )}
-                            </div>
-
-                            {/* Strictly Filtered Top Models in this Benchmark */}
-                            <div className="pt-3 border-t border-slate-800/80 space-y-1.5">
-                              <div className="flex items-center justify-between text-[11px] text-slate-400">
-                                <span>
-                                  Top Modelos Filtrados ({rows.length}):
-                                </span>
-                                <a
-                                  href={bench.officialUrl}
-                                  target="_blank"
-                                  rel="noreferrer"
-                                  className="text-indigo-400 hover:underline inline-flex items-center gap-1"
-                                >
-                                  Fonte Oficial
-                                  <ExternalLink className="w-3 h-3" />
-                                </a>
-                              </div>
-
-                              {rows.length > 0 ? (
-                                <div className="space-y-1">
-                                  {rows.slice(0, 6).map((row) => (
-                                    <div
-                                      key={row.modelCanonicalId}
-                                      className="flex items-center justify-between text-xs bg-slate-900/90 px-2.5 py-1 rounded gap-2"
-                                    >
-                                      <span className="truncate text-slate-200">
-                                        {row.rank}. {row.displayName}{' '}
-                                        <span className="text-[10px] text-slate-400">
-                                          [{row.provider}]
-                                        </span>
-                                      </span>
-                                      <span className="font-mono font-bold text-emerald-400 shrink-0">
-                                        {row.displayScore}
-                                      </span>
-                                    </div>
-                                  ))}
-                                </div>
-                              ) : (
-                                <div className="p-2 rounded bg-slate-900 border border-slate-800 text-[11px] text-slate-400">
-                                  Nenhum modelo dos provedores selecionados
-                                  possui pontuação neste benchmark.
-                                </div>
-                              )}
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          </section>
+          <UseCasesTab
+            benchmarks={state?.benchmarks ?? []}
+            qualifiedBenchmarkIds={qualifiedBenchmarkIds}
+            allActiveBenchmarkTablesMap={allActiveBenchmarkTablesMap}
+          />
         )}
 
-        {/* ===================================================================== */}
-        {/* TAB 4: QUALIFIED SUBSTITUTE BENCHMARKS (STRICT PROVIDER & TOP 4)      */}
-        {/* ===================================================================== */}
         {activeTab === 'substitutes' && (
-          <section className="space-y-6">
-            <div className="bg-slate-900 border border-slate-800 rounded-xl p-5 space-y-2">
-              <h2 className="text-base font-bold text-white flex items-center gap-2">
-                <Sparkles className="w-5 h-5 text-amber-400" />
-                Benchmarks Substitutos Qualificados de Fronteira (Artificial
-                Analysis & Equivalentes)
-              </h2>
-              <p className="text-xs text-slate-300 leading-relaxed">
-                Exibindo apenas substitutos com cobertura ativa de modelos de
-                fronteira 2026 (Top {MAX_MODELS_PER_PROVIDER} modelos/provedor
-                e filtro estrito de provedores aplicado). Sempre que acionados
-                no ranking composto, recebem o badge explícito{' '}
-                <span className="px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-300 border border-amber-500/40 font-semibold">
-                  Substituto
-                </span>
-                .
-              </p>
-            </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {(state?.benchmarks ?? [])
-                .filter(
-                  (b) => b.isSubstitute && qualifiedBenchmarkIds.has(b.id)
-                )
-                .map((sub) => {
-                  const table = allActiveBenchmarkTablesMap.get(sub.id);
-                  const rows = table?.rows ?? [];
-                  const primaryNames = (sub.substituteForIds ?? []).map(
-                    (pid) =>
-                      state?.benchmarks.find((b) => b.id === pid)?.shortName ??
-                      pid
-                  );
-
-                  return (
-                    <div
-                      key={sub.id}
-                      className="bg-slate-900 border border-slate-800 rounded-xl p-4 flex flex-col justify-between space-y-3"
-                    >
-                      <div className="space-y-2">
-                        <div className="flex items-start justify-between gap-2">
-                          <div>
-                            <span className="px-2 py-0.5 rounded text-[10px] font-semibold bg-amber-500/20 text-amber-300 border border-amber-500/40 uppercase">
-                              Substituto Qualificado
-                            </span>
-                            <h3 className="font-bold text-sm text-white mt-1.5">
-                              {sub.name}
-                            </h3>
-                          </div>
-                          <a
-                            href={sub.officialUrl}
-                            target="_blank"
-                            rel="noreferrer"
-                            className="text-xs text-indigo-400 hover:underline inline-flex items-center gap-1 shrink-0"
-                          >
-                            Fonte
-                            <ExternalLink className="w-3 h-3" />
-                          </a>
-                        </div>
-
-                        <p className="text-xs text-slate-300">
-                          <strong>Equivalência técnica:</strong>{' '}
-                          {sub.substituteEquivalenceExplanation}
-                        </p>
-
-                        <div className="flex flex-wrap gap-1 pt-1">
-                          <span className="text-[11px] text-slate-400">
-                            Atua como fallback para:
-                          </span>
-                          {primaryNames.map((name) => (
-                            <span
-                              key={name}
-                              className="px-2 py-0.5 rounded bg-slate-950 border border-slate-800 text-[11px] text-indigo-300 font-medium"
-                            >
-                              {name}
-                            </span>
-                          ))}
-                        </div>
-                      </div>
-
-                      <div className="pt-3 border-t border-slate-800 space-y-1.5">
-                        <div className="text-[11px] text-slate-400 flex justify-between">
-                          <span>Modelos Filtrados (Top 4/provedor):</span>
-                          <strong className="text-emerald-400 font-mono">
-                            {rows.length} modelos
-                          </strong>
-                        </div>
-                        {rows.length > 0 ? (
-                          rows.slice(0, 5).map((row) => (
-                            <div
-                              key={row.modelCanonicalId}
-                              className="flex items-center justify-between text-xs bg-slate-950 px-2.5 py-1 rounded gap-2"
-                            >
-                              <span className="truncate text-slate-200">
-                                {row.rank}. {row.displayName}{' '}
-                                <span className="text-[10px] text-slate-400">
-                                  [{row.provider}]
-                                </span>
-                              </span>
-                              <span className="font-mono font-bold text-amber-300 shrink-0">
-                                {row.displayScore}
-                              </span>
-                            </div>
-                          ))
-                        ) : (
-                          <div className="p-2 rounded bg-slate-950 border border-slate-800 text-[11px] text-slate-400">
-                            Nenhum modelo dos provedores selecionados neste
-                            substituto.
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  );
-                })}
-            </div>
-          </section>
+          <SubstitutesTab
+            benchmarks={state?.benchmarks ?? []}
+            qualifiedBenchmarkIds={qualifiedBenchmarkIds}
+            allActiveBenchmarkTablesMap={allActiveBenchmarkTablesMap}
+          />
         )}
 
-        {/* ===================================================================== */}
-        {/* TAB 5: STATUS DAS FONTES, AGENDADOR (5m), IMPORTAÇÃO & OCULTADOS      */}
-        {/* ===================================================================== */}
         {activeTab === 'sources' && (
-          <section className="space-y-6">
-            {/* MANUAL IMPORT PANEL */}
-            <div className="bg-slate-900 border border-slate-800 rounded-xl p-5 space-y-4">
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <div>
-                  <h2 className="text-base font-bold text-white flex items-center gap-2">
-                    <Upload className="w-5 h-5 text-indigo-400" />
-                    Importação Manual Determinística (JSON / CSV)
-                  </h2>
-                  <p className="text-xs text-slate-400">
-                    Para benchmarks acadêmicos/fechados sem endpoint público
-                    estruturado (ex.: <code>bluefin</code>,{' '}
-                    <code>finsheet-bench</code>, <code>mm-browsecomp</code>,{' '}
-                    <code>ui-cube</code>, <code>slidebench</code>,{' '}
-                    <code>design2code</code> ou cadernos brasileiros de{' '}
-                    <code>llm-accountants-lawyers-br</code>), importe pontuações
-                    verificáveis sem fabricar dados.
-                  </p>
-                </div>
-                <div className="flex items-center gap-2">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setImportFormat('json');
-                      setImportContent(SAMPLE_MANUAL_JSON);
-                    }}
-                    className={`px-3 py-1.5 rounded-lg text-xs font-semibold cursor-pointer ${
-                      importFormat === 'json'
-                        ? 'bg-indigo-600 text-white'
-                        : 'bg-slate-800 text-slate-300'
-                    }`}
-                  >
-                    Template JSON
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setImportFormat('csv');
-                      setImportContent(SAMPLE_MANUAL_CSV);
-                    }}
-                    className={`px-3 py-1.5 rounded-lg text-xs font-semibold cursor-pointer ${
-                      importFormat === 'csv'
-                        ? 'bg-indigo-600 text-white'
-                        : 'bg-slate-800 text-slate-300'
-                    }`}
-                  >
-                    Template CSV
-                  </button>
-                </div>
-              </div>
-
-              <form onSubmit={handleManualImportSubmit} className="space-y-3">
-                <textarea
-                  rows={8}
-                  value={importContent}
-                  onChange={(e) => setImportContent(e.target.value)}
-                  className="w-full bg-slate-950 border border-slate-700 rounded-lg p-3 font-mono text-xs text-slate-100 focus:outline-none focus:border-indigo-500"
-                />
-                <div className="flex flex-wrap items-center justify-between gap-3">
-                  <div className="text-xs text-slate-400">
-                    Formato selecionado:{' '}
-                    <strong className="uppercase text-indigo-300">
-                      {importFormat}
-                    </strong>
-                    . Os dados importados são persistidos no SQLite com{' '}
-                    <code>originType: "manual"</code>.
-                  </div>
-                  <button
-                    type="submit"
-                    className="px-4 py-2 rounded-lg text-xs font-bold bg-emerald-600 hover:bg-emerald-500 text-white cursor-pointer"
-                  >
-                    Importar Dados Determinísticos
-                  </button>
-                </div>
-              </form>
-
-              {importStatusMsg && (
-                <div
-                  className={`p-3 rounded-lg text-xs font-medium border ${
-                    importStatusMsg.type === 'success'
-                      ? 'bg-emerald-950/40 border-emerald-500/40 text-emerald-200'
-                      : 'bg-rose-950/40 border-rose-500/40 text-rose-200'
-                  }`}
-                >
-                  {importStatusMsg.text}
-                </div>
-              )}
-            </div>
-
-            {/* DISCREET SECTION: BENCHMARKS AUTOMATICALLY HIDDEN FOR LOW FRONTIER COVERAGE */}
-            <div className="bg-slate-900 border border-slate-800 rounded-xl overflow-hidden">
-              <div className="px-4 py-3 border-b border-slate-800 flex flex-wrap items-center justify-between gap-2">
-                <div>
-                  <h3 className="text-sm font-bold text-slate-200 flex items-center gap-2">
-                    <EyeOff className="w-4 h-4 text-slate-400" />
-                    Benchmarks Ocultados Automaticamente por Baixa Cobertura de
-                    Fronteira ({hiddenFrontierBenchmarks.length})
-                  </h3>
-                  <p className="text-xs text-slate-400 mt-0.5">
-                    Critério determinístico: exige ao menos 4 modelos atuais de
-                    fronteira (2026) cobrindo 3+ provedores distintos e 3+ dos 4
-                    principais laboratórios (Anthropic, OpenAI, Google, Meta).
-                    Estes benchmarks são omitidos de todo o comparativo.
-                  </p>
-                </div>
-              </div>
-              <div className="overflow-x-auto">
-                <table className="w-full text-left border-collapse text-xs">
-                  <thead>
-                    <tr className="bg-slate-950 text-slate-400 border-b border-slate-800 uppercase text-[11px]">
-                      <th className="p-3">Benchmark</th>
-                      <th className="p-3 text-center">Tipo</th>
-                      <th className="p-3 text-center">Modelos Coletados</th>
-                      <th className="p-3 text-center">Fronteira / Labs</th>
-                      <th className="p-3">Motivo Determinístico da Ocultação</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-800/70">
-                    {hiddenFrontierBenchmarks.map((diag) => (
-                      <tr
-                        key={diag.benchmarkId}
-                        className="hover:bg-slate-800/30 text-slate-300"
-                      >
-                        <td className="p-3 font-medium text-slate-200">
-                          <div>{diag.benchmarkName}</div>
-                          <div className="text-[10px] font-mono text-slate-500">
-                            {diag.benchmarkId}
-                          </div>
-                        </td>
-                        <td className="p-3 text-center">
-                          <span
-                            className={`px-2 py-0.5 rounded text-[10px] font-semibold uppercase ${
-                              diag.isSubstitute
-                                ? 'bg-amber-500/15 text-amber-300 border border-amber-500/30'
-                                : 'bg-slate-800 text-slate-300 border border-slate-700'
-                            }`}
-                          >
-                            {diag.isSubstitute ? 'Substituto' : 'Primário'}
-                          </span>
-                        </td>
-                        <td className="p-3 text-center font-mono">
-                          {diag.totalDistinctModels}
-                        </td>
-                        <td className="p-3 text-center font-mono text-slate-400">
-                          {diag.frontierModelsCount} fr /{' '}
-                          {diag.majorFrontierLabsCount}/4 labs
-                        </td>
-                        <td className="p-3 text-slate-400">{diag.reason}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-
-            {/* ADAPTER SOURCES STATUS TABLE */}
-            <div className="bg-slate-900 border border-slate-800 rounded-xl overflow-hidden">
-              <div className="px-4 py-3 border-b border-slate-800 flex items-center justify-between">
-                <h3 className="text-sm font-bold text-white flex items-center gap-2">
-                  <Database className="w-4 h-4 text-indigo-400" />
-                  Status Detalhado por Fonte Oficial (
-                  {state?.sources.length ?? 0} Adaptadores Determinísticos)
-                </h3>
-              </div>
-              <div className="overflow-x-auto">
-                <table className="w-full text-left border-collapse text-xs">
-                  <thead>
-                    <tr className="bg-slate-950 text-slate-400 border-b border-slate-800 uppercase text-[11px]">
-                      <th className="p-3">Fonte / Adaptador</th>
-                      <th className="p-3 text-center">Status</th>
-                      <th className="p-3 text-center">Registros</th>
-                      <th className="p-3 text-center">Latência / HTTP</th>
-                      <th className="p-3">Última Atualização</th>
-                      <th className="p-3">Diagnóstico Técnico / Motivo</th>
-                      <th className="p-3 text-right">Link Oficial</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-800/70">
-                    {(state?.sources ?? []).map((src) => (
-                      <tr key={src.sourceId} className="hover:bg-slate-800/30">
-                        <td className="p-3 font-semibold text-slate-100">
-                          <div>{src.name}</div>
-                          <div className="text-[10px] font-mono text-slate-500">
-                            {src.sourceId}
-                          </div>
-                        </td>
-                        <td className="p-3 text-center">
-                          <span
-                            className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase ${
-                              src.status === 'live'
-                                ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40'
-                                : src.status === 'partial'
-                                  ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/40'
-                                  : src.status === 'manual'
-                                    ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40'
-                                    : 'bg-slate-800 text-slate-400 border border-slate-700'
-                            }`}
-                          >
-                            {src.status}
-                          </span>
-                        </td>
-                        <td className="p-3 text-center font-mono font-bold text-slate-200">
-                          {src.recordsCount}
-                        </td>
-                        <td className="p-3 text-center font-mono text-slate-400">
-                          {src.durationMs}ms
-                          {src.httpStatus ? ` (HTTP ${src.httpStatus})` : ''}
-                        </td>
-                        <td className="p-3 font-mono text-[11px] text-slate-400">
-                          {src.lastSyncAt
-                            ? new Date(src.lastSyncAt).toLocaleString('pt-BR')
-                            : '—'}
-                        </td>
-                        <td className="p-3 text-slate-300 max-w-md">
-                          {src.technicalReason}
-                        </td>
-                        <td className="p-3 text-right">
-                          <a
-                            href={src.officialUrl}
-                            target="_blank"
-                            rel="noreferrer"
-                            className="inline-flex items-center gap-1 text-indigo-400 hover:underline font-medium"
-                          >
-                            Abrir Fonte
-                            <ExternalLink className="w-3 h-3" />
-                          </a>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-
-            {/* RECENT SYNC RUNS LOG */}
-            <div className="bg-slate-900 border border-slate-800 rounded-xl overflow-hidden">
-              <div className="px-4 py-3 border-b border-slate-800">
-                <h3 className="text-sm font-bold text-white flex items-center gap-2">
-                  <Clock className="w-4 h-4 text-indigo-400" />
-                  Histórico das Últimas Execuções do Agendador (Ciclo de 5
-                  Minutos)
-                </h3>
-              </div>
-              <div className="divide-y divide-slate-800/70">
-                {(state?.syncRuns ?? []).map((run) => (
-                  <div
-                    key={run.id}
-                    className="p-3 flex flex-wrap items-center justify-between gap-2 text-xs"
-                  >
-                    <div className="flex items-center gap-2">
-                      <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
-                      <span className="font-mono text-slate-400">
-                        #{run.id} [{run.trigger.toUpperCase()}]
-                      </span>
-                      <span className="text-slate-200">
-                        {run.summaryMessage}
-                      </span>
-                    </div>
-                    <span className="font-mono text-[11px] text-slate-400">
-                      {new Date(run.completedAt).toLocaleString('pt-BR')}
-                    </span>
-                  </div>
-                ))}
-              </div>
-            </div>
-          </section>
+          <SourcesTab
+            importFormat={importFormat}
+            setImportFormat={setImportFormat}
+            importContent={importContent}
+            setImportContent={setImportContent}
+            importStatusMsg={importStatusMsg}
+            onSubmitImport={handleManualImportSubmit}
+            hiddenFrontierBenchmarks={hiddenFrontierBenchmarks}
+            sources={state?.sources ?? []}
+            syncRuns={state?.syncRuns ?? []}
+          />
         )}
       </main>
 

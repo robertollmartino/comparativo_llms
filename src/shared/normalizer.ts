@@ -347,25 +347,19 @@ const CANONICAL_MODEL_RULES: CanonicalRule[] = [
     provider: 'Meta',
   },
   {
-    pattern: /\bmuse[-\s]*wonder[-\s]*full\b/i,
+    pattern: /(?:\bmuse[-\s]*)?wonder[-\s]*full\b/i,
     canonicalId: 'muse-wonder-full',
     displayName: 'Muse Wonder Full',
     provider: 'Meta',
   },
   {
-    pattern: /\bmuse[-\s]*wonder[-\s]*1[.\s-]*0\b/i,
-    canonicalId: 'muse-wonder-1-0',
-    displayName: 'Muse Wonder 1.0',
-    provider: 'Meta',
-  },
-  {
-    pattern: /\bmuse[-\s]*wonder(?![-\s]*(?:1[.\s-]*0|full))\b/i,
+    pattern: /(?:\bmuse[-\s]*)?wonder(?:[-\s]*1[.\s-]*0)?(?![-\s]*full)\b/i,
     canonicalId: 'muse-wonder',
     displayName: 'Muse Wonder',
     provider: 'Meta',
   },
   {
-    pattern: /\bmuse[-\s]*ember\b/i,
+    pattern: /(?:\bmuse[-\s]*)?ember(?:[-\s]*1)?\b/i,
     canonicalId: 'muse-ember',
     displayName: 'Muse Ember',
     provider: 'Meta',
@@ -539,6 +533,14 @@ const CANONICAL_MODEL_RULES: CanonicalRule[] = [
     canonicalId: 'mimo-v2-6-flash',
     displayName: 'MiMo-V2.6-Flash',
     provider: 'Xiaomi',
+  },
+
+  // Tencent Hy4
+  {
+    pattern: /\b(?:tencent[-\s]*)?hy4(?:\s*preview)?\b/i,
+    canonicalId: 'tencent-hy4',
+    displayName: 'Tencent Hy4',
+    provider: 'Tencent',
   },
 
   // GitHub / Microsoft
@@ -745,7 +747,7 @@ export function normalizeModel(
   // Fallback deterministic slugification stripping parenthetical effort/harness suffixes
   const baseName = cleanedRaw
     .replace(
-      /\(\s*(?:max|xhigh|high|medium|low|thinking|non-thinking|non-reasoning|default fallback|claude code|mini-swe-agent|codex|vals\.ai run)[^)]*\)/gi,
+      /\(\s*(?:max|xhigh|high|medium|low|none|thinking|non-thinking|non-reasoning|default fallback|claude code|mini-swe-agent|codex|vals\.ai run)[^)]*\)/gi,
       ''
     )
     .replace(/\s+(?:xhigh|high|medium|low|max)$/i, '')

@@ -425,9 +425,9 @@ describe('6. Limite Determinístico de Top 4 Modelos por Provedor', () => {
       // 6 OpenAI models (including ties on overallScore)
       makeMockEntry('gpt-6-2-astra', 'GPT-6.2 Astra', 'OpenAI', 92, 6),
       makeMockEntry('gpt-6-1-sol', 'GPT-6.1 Sol', 'OpenAI', 89, 5),
-      makeMockEntry('gpt-5-6-sol', 'GPT-5.6 Sol', 'OpenAI', 85, 5),
-      makeMockEntry('gpt-5-6-terra', 'GPT-5.6 Terra', 'OpenAI', 85, 4), // tie overallScore 85, lower primary than 5.6 Sol, higher than legacy
-      makeMockEntry('gpt-4o', 'GPT-4o', 'OpenAI', 85, 4), // tie overallScore 85 & primary 4, loses tie-break to frontier GPT-5.6 Terra
+      makeMockEntry('gpt-6-sol', 'GPT-6 Sol', 'OpenAI', 85, 5),
+      makeMockEntry('gpt-6-astra', 'GPT-6 Astra', 'OpenAI', 85, 4), // tie overallScore 85, lower primary than GPT-6 Sol, higher than legacy gpt-4o
+      makeMockEntry('gpt-4o', 'GPT-4o', 'OpenAI', 85, 4), // tie overallScore 85 & primary 4, loses tie-break to frontier GPT-6 Astra
       makeMockEntry('gpt-3-5', 'GPT-3.5', 'OpenAI', 60, 1),
       // 5 Anthropic models
       makeMockEntry('claude-fable-5-2', 'Claude Fable 5.2', 'Anthropic', 94, 7),
@@ -446,8 +446,8 @@ describe('6. Limite Determinístico de Top 4 Modelos por Provedor', () => {
     expect(openai.map((m) => m.modelCanonicalId)).toEqual([
       'gpt-6-2-astra',
       'gpt-6-1-sol',
-      'gpt-5-6-sol',
-      'gpt-5-6-terra',
+      'gpt-6-sol',
+      'gpt-6-astra',
     ]);
     // Legacy models gpt-4o, gpt-3-5, claude-3-5-haiku eliminated
     expect(top4.some((m) => m.modelCanonicalId === 'gpt-4o')).toBe(false);
@@ -660,5 +660,61 @@ describe('8. Filtro Determinístico de Benchmarks sem Modelos de Fronteira', () 
     ).toBe(1);
     // Overall composite average of UC 1 (92) and UC 3 (84) = 88
     expect(fable.overallScore).toBe(88);
+  });
+});
+
+describe('9. Filtro Estrito de Modelos Atuais de Fronteira (Sem GPT-5.x, Gemini 3.x, Claude 4.x)', () => {
+  it('rejeita modelos legados/antigos quando onlyFrontierModels=true e normaliza Qwen4/Wonder/Ember', () => {
+    expect(normalizeModel('Qwen4').canonicalId).toBe('qwen-4');
+    expect(normalizeModel('Wonder Full').canonicalId).toBe('muse-wonder-full');
+    expect(normalizeModel('Wonder').canonicalId).toBe('muse-wonder');
+    expect(normalizeModel('Ember-1').canonicalId).toBe('muse-ember');
+    expect(normalizeModel('MiniMax M3 ( none )').canonicalId).toBe('minimax-m3');
+    expect(normalizeModel('MiniMax M3 ( none )').effort).toBe('non-thinking');
+
+    const mixedScores = parseManualImportPayload(
+      'json',
+      JSON.stringify([
+        { benchmarkId: 'vals-legal-research', model: 'GPT 5.1 Codex', provider: 'OpenAI', score: 95 },
+        { benchmarkId: 'vals-legal-research', model: 'GPT-5.2', provider: 'OpenAI', score: 92 },
+        { benchmarkId: 'vals-legal-research', model: 'GPT-5.6 Sol', provider: 'OpenAI', score: 90 },
+        { benchmarkId: 'vals-legal-research', model: 'GPT-5.6 Luna', provider: 'OpenAI', score: 89 },
+        { benchmarkId: 'vals-legal-research', model: 'GPT-5.6 Terra', provider: 'OpenAI', score: 88 },
+        { benchmarkId: 'vals-legal-research', model: 'Gemini 3 Pro', provider: 'Google', score: 91 },
+        { benchmarkId: 'vals-legal-research', model: 'Claude Opus 4.6', provider: 'Anthropic', score: 90 },
+        { benchmarkId: 'vals-legal-research', model: 'Claude Haiku 5.5', provider: 'Anthropic', score: 85 },
+        { benchmarkId: 'vals-legal-research', model: 'GPT-6.2 Astra', provider: 'OpenAI', score: 84 },
+        { benchmarkId: 'vals-legal-research', model: 'Gemini 4 Carbon', provider: 'Google', score: 83 },
+        { benchmarkId: 'vals-legal-research', model: 'Claude Fable 5.2', provider: 'Anthropic', score: 82 },
+        { benchmarkId: 'vals-legal-research', model: 'Muse Wonder Full', provider: 'Meta', score: 80 },
+      ])
+    );
+
+    const overall = calculateOverallRanking(mixedScores, {
+      weights: WEIGHT_PRESETS[0].weights,
+      includeSubstitutes: true,
+      onlyFrontierModels: true,
+      maxModelsPerProvider: 4,
+    });
+
+    expect(overall.map((m) => m.modelCanonicalId)).toEqual([
+      'gpt-6-2-astra',
+      'gemini-4-carbon',
+      'claude-fable-5-2',
+      'muse-wonder-full',
+    ]);
+
+    const tables = buildPerBenchmarkRankings(mixedScores, {
+      includeSubstitutes: true,
+      onlyFrontierModels: true,
+      maxModelsPerProvider: 4,
+    });
+    expect(tables).toHaveLength(1);
+    expect(tables[0].rows.map((r) => r.modelCanonicalId)).toEqual([
+      'gpt-6-2-astra',
+      'gemini-4-carbon',
+      'claude-fable-5-2',
+      'muse-wonder-full',
+    ]);
   });
 });

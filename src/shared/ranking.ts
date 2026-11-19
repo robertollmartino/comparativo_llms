@@ -19,28 +19,39 @@ export const MAJOR_FRONTIER_PROVIDERS = new Set<string>([
 ]);
 
 const FRONTIER_MODEL_PATTERNS: RegExp[] = [
-  // Anthropic 2026 frontier: Claude Fable 5.x, Opus 5.x, Sonnet 5.x, Haiku 5.x, Mythos 5.x
-  /\b(?:claude[-\s]*)?(?:fable|mythos|opus|sonnet|haiku)[-\s]*5(?:[.\s-]*\d+)?\b/i,
-  // OpenAI 2026 frontier: GPT-6.x, GPT-5.6, GPT-5.5, GPT-5.4, GPT-5.3 Codex
-  /\bgpt[-\s]*(?:6(?:[.\s-]*\d+)?|5[.\s-]*6|5[.\s-]*5|5[.\s-]*4|5[.\s-]*3[-\s]*codex)\b/i,
-  // Google 2026 frontier: Gemini 4.x, 3.8, 3.7, 3.1 Pro
-  /\bgemini[-\s]*(?:4(?:[.\s-]*\d+)?|3[.\s-]*8|3[.\s-]*7|3[.\s-]*1[-\s]*pro)\b/i,
-  // Meta 2026 frontier: Muse Wonder, Muse Spark 1.x, Muse Ember
-  /\bmuse[-\s]*(?:wonder|spark[-\s]*1(?:[.\s-]*\d+)?|ember)\b/i,
+  // Anthropic 2026 frontier: Claude Fable 5.x, Mythos 5.x, Opus 5.x, Sonnet 5.x (excludes Haiku and 4.x/3.x)
+  /\b(?:claude[-\s]*)?(?:fable|mythos|opus|sonnet)[-\s]*5(?:[.\s-]*\d+)?\b/i,
+  // OpenAI 2026 frontier: GPT-6.x ONLY (excludes GPT-5.x, GPT-4.x, o1/o3/o4)
+  /\bgpt[-\s]*6(?:[.\s-]*\d+)?\b/i,
+  // Google 2026 frontier: Gemini 4.x ONLY (excludes Gemini 3.x/2.x/1.x and Gemma)
+  /\bgemini[-\s]*4(?:[.\s-]*\d+)?\b/i,
+  // Meta 2026 frontier: Muse Wonder, Muse Spark 1.2+, Muse Ember (excludes Llama 2/3/4, Muse Glimmer, old Spark)
+  /\bmuse[-\s]*(?:wonder|spark[-\s]*1[.\s-]*[2-9]|ember)\b/i,
   // DeepSeek 2026 frontier: DeepSeek V4.x
   /\bdeepseek[-\s]*v4(?:[.\s-]*\d+)?\b/i,
-  // Moonshot AI 2026 frontier: Kimi K3.x, K2.6
-  /\bkimi[-\s]*(?:k?3(?:[.\s-]*\d+)?|k?2[.\s-]*6)\b/i,
-  // Alibaba / Qwen 2026 frontier: Qwen 4, Qwen 3.8
-  /\bqwen[-\s]*(?:4(?:[.\s-]*\d+)?|3[.\s-]*8)\b/i,
-  // Z.AI (Zhipu) 2026 frontier: GLM-5.x
-  /\bglm[-\s]*5(?:[.\s-]*\d+)?\b/i,
+  // Moonshot AI 2026 frontier: Kimi K3.x (excludes K2.x)
+  /\bkimi[-\s]*k?3(?:[.\s-]*\d+)?\b/i,
+  // Alibaba / Qwen 2026 frontier: Qwen 4.x and flagship Qwen 3.8 (excludes 27B small & 3.7 or older)
+  /\bqwen[-\s]*(?:4(?:[.\s-]*\d+)?|3[.\s-]*8(?![-\s]*27b))\b/i,
+  // Z.AI (Zhipu) 2026 frontier: GLM-5.1+ (5.1, 5.2, 5.3)
+  /\bglm[-\s]*5[.\s-]*[1-9]\b/i,
   // xAI 2026 frontier: Grok 4.x
   /\bgrok[-\s]*4(?:[.\s-]*\d+)?\b/i,
-  // Xiaomi 2026 frontier: MiMo-V2.6
-  /\bmimo[-\s]*v?2[.\s-]*6\b/i,
+  // Xiaomi 2026 frontier: MiMo-V2.6+
+  /\bmimo[-\s]*v?(?:2[.\s-]*[6-9]|3)\b/i,
   // MiniMax 2026 frontier: MiniMax-M3.x
   /\bminimax[-\s]*m3(?:[.\s-]*\d+|p\d+)?\b/i,
+  // Secondary 2026 frontier labs
+  /\bmistral[-\s]*large[-\s]*4\b/i,
+  /\bnemotron[-\s]*(?:3[.\s-]*5[-\s]*(?:lightning|super|bolt[-\s]*74b)|3[-\s]*ultra)\b/i,
+  /\bcommand[-\s]*a\+/i,
+  /\bstep[-\s]*5\b/i,
+  /\bernie[-\s]*5\b/i,
+  /\b(?:tencent[-\s]*)?hy4\b/i,
+  /\bk-exaone[-\s]*2\b/i,
+  /\blongcat[-\s]*2\b/i,
+  /\bmotif[-\s]*3\b/i,
+  /\bling[-\s]*3[.\s-]*1\b/i,
 ];
 
 export const FRONTIER_MIN_MODELS = 4;
@@ -152,6 +163,11 @@ export function compareRankedModels(
   a: RankedModelEntry,
   b: RankedModelEntry
 ): number {
+  const aBroad = a.useCasesCovered >= 4 ? 1 : 0;
+  const bBroad = b.useCasesCovered >= 4 ? 1 : 0;
+  if (bBroad !== aBroad) {
+    return bBroad - aBroad;
+  }
   if (b.overallScore !== a.overallScore) {
     return b.overallScore - a.overallScore;
   }
@@ -200,6 +216,7 @@ export interface RankingOptions {
   selectedModelIds?: string[];
   qualifiedBenchmarkIds?: Set<string>;
   onlyFrontierQualified?: boolean;
+  onlyFrontierModels?: boolean;
   maxModelsPerProvider?: number | null;
 }
 
@@ -212,6 +229,7 @@ export interface PerBenchmarkRankingOptions {
   allowedModelIds?: Set<string>;
   qualifiedBenchmarkIds?: Set<string>;
   onlyFrontierQualified?: boolean;
+  onlyFrontierModels?: boolean;
   maxModelsPerProvider?: number | null;
   searchQuery?: string;
 }
@@ -252,6 +270,7 @@ export function calculateOverallRanking(
     selectedModelIds,
     qualifiedBenchmarkIds,
     onlyFrontierQualified = false,
+    onlyFrontierModels = false,
     maxModelsPerProvider = null,
   } = options;
 
@@ -353,6 +372,12 @@ export function calculateOverallRanking(
   const results: RankedModelEntry[] = [];
 
   for (const [modelId, modelData] of byModel.entries()) {
+    if (
+      onlyFrontierModels &&
+      !isFrontierModel(modelId, modelData.displayName)
+    ) {
+      continue;
+    }
     if (
       normalizedProviderFilter &&
       !normalizedProviderFilter.has(modelData.provider)
@@ -588,6 +613,7 @@ export function buildPerBenchmarkRankings(
     allowedModelIds,
     qualifiedBenchmarkIds,
     onlyFrontierQualified = false,
+    onlyFrontierModels = false,
     maxModelsPerProvider = 4,
     searchQuery,
   } = options;
@@ -619,6 +645,12 @@ export function buildPerBenchmarkRankings(
   for (const score of allScores) {
     if (score.modelCanonicalId === 'human') continue;
     if (activeQualifiedIds && !activeQualifiedIds.has(score.benchmarkId)) {
+      continue;
+    }
+    if (
+      onlyFrontierModels &&
+      !isFrontierModel(score.modelCanonicalId, score.modelDisplayName)
+    ) {
       continue;
     }
 

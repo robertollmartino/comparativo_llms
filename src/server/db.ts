@@ -274,8 +274,10 @@ export class BenchmarkDatabase {
         r.effort
       );
       const useCanonical =
-        r.provider === 'Outros / Independente' ||
-        normalized.provider !== r.provider;
+        r.origin_type === 'live' &&
+        (r.provider === 'Outros / Independente' ||
+          normalized.provider !== r.provider ||
+          normalized.canonicalId !== r.model_canonical_id);
 
       return {
         id: r.id,
@@ -287,8 +289,12 @@ export class BenchmarkDatabase {
           ? normalized.displayName
           : r.model_display_name,
         provider: normalized.provider,
-        effort: r.effort,
-        effortLabel: r.effort_label,
+        effort:
+          useCanonical && r.effort === 'default' ? normalized.effort : r.effort,
+        effortLabel:
+          useCanonical && r.effort === 'default'
+            ? normalized.effortLabel
+            : r.effort_label,
         rawModelName: r.raw_model_name,
         rawScore: r.raw_score,
         normalizedScore: r.normalized_score,
