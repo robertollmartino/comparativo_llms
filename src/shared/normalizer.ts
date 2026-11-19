@@ -113,9 +113,15 @@ const CANONICAL_MODEL_RULES: CanonicalRule[] = [
     provider: 'Anthropic',
   },
   {
-    pattern: /\b(?:claude[-\s]*)?sonnet[-\s]*4(?![.\s-]*[1-9])\b/i,
+    pattern: /(?:\b(?:claude[-\s]*)?sonnet[-\s]*4(?![.\s-]*[1-9])\b|\bclaude[-\s]*4(?:[.\s-]*0)?[-\s]*sonnet\b)/i,
     canonicalId: 'claude-sonnet-4',
     displayName: 'Claude Sonnet 4',
+    provider: 'Anthropic',
+  },
+  {
+    pattern: /\bclaude[-\s]*haiku[-\s]*4[.\s-]*5\b/i,
+    canonicalId: 'claude-haiku-4-5',
+    displayName: 'Claude Haiku 4.5',
     provider: 'Anthropic',
   },
   {
@@ -157,6 +163,12 @@ const CANONICAL_MODEL_RULES: CanonicalRule[] = [
     provider: 'OpenAI',
   },
   {
+    pattern: /\bgpt[-\s]*6[-\s]*sol\b/i,
+    canonicalId: 'gpt-6-sol',
+    displayName: 'GPT-6 Sol',
+    provider: 'OpenAI',
+  },
+  {
     pattern: /\bgpt[-\s]*6[-\s]*luna\b/i,
     canonicalId: 'gpt-6-luna',
     displayName: 'GPT-6 Luna',
@@ -169,6 +181,18 @@ const CANONICAL_MODEL_RULES: CanonicalRule[] = [
     provider: 'OpenAI',
   },
   {
+    pattern: /\bgpt[-\s]*5[.\s-]*6[-\s]*terra\b/i,
+    canonicalId: 'gpt-5-6-terra',
+    displayName: 'GPT-5.6 Terra',
+    provider: 'OpenAI',
+  },
+  {
+    pattern: /\bgpt[-\s]*5[.\s-]*6[-\s]*luna\b/i,
+    canonicalId: 'gpt-5-6-luna',
+    displayName: 'GPT-5.6 Luna',
+    provider: 'OpenAI',
+  },
+  {
     pattern: /\bgpt[-\s]*5[.\s-]*5\b/i,
     canonicalId: 'gpt-5-5',
     displayName: 'GPT-5.5',
@@ -178,6 +202,12 @@ const CANONICAL_MODEL_RULES: CanonicalRule[] = [
     pattern: /\bgpt[-\s]*5[.\s-]*4\b/i,
     canonicalId: 'gpt-5-4',
     displayName: 'GPT-5.4',
+    provider: 'OpenAI',
+  },
+  {
+    pattern: /\bgpt[-\s]*5[.\s-]*3[-\s]*codex\b/i,
+    canonicalId: 'gpt-5-3-codex',
+    displayName: 'GPT-5.3 Codex',
     provider: 'OpenAI',
   },
   {
@@ -231,9 +261,39 @@ const CANONICAL_MODEL_RULES: CanonicalRule[] = [
     provider: 'Google',
   },
   {
+    pattern: /\bgemini[-\s]*4[-\s]*neon\b/i,
+    canonicalId: 'gemini-4-neon',
+    displayName: 'Gemini 4 Neon',
+    provider: 'Google',
+  },
+  {
     pattern: /\bgemini[-\s]*3[.\s-]*8[-\s]*flash\b/i,
     canonicalId: 'gemini-3-8-flash',
     displayName: 'Gemini 3.8 Flash',
+    provider: 'Google',
+  },
+  {
+    pattern: /\bgemini[-\s]*3[.\s-]*7[-\s]*flash\b/i,
+    canonicalId: 'gemini-3-7-flash',
+    displayName: 'Gemini 3.7 Flash',
+    provider: 'Google',
+  },
+  {
+    pattern: /\bgemini[-\s]*3[.\s-]*6[-\s]*flash\b/i,
+    canonicalId: 'gemini-3-6-flash',
+    displayName: 'Gemini 3.6 Flash',
+    provider: 'Google',
+  },
+  {
+    pattern: /\bgemini[-\s]*3[.\s-]*5[-\s]*flash[-\s]*lite\b/i,
+    canonicalId: 'gemini-3-5-flash-lite',
+    displayName: 'Gemini 3.5 Flash Lite',
+    provider: 'Google',
+  },
+  {
+    pattern: /\bgemini[-\s]*3[.\s-]*5[-\s]*flash(?!\s*lite)\b/i,
+    canonicalId: 'gemini-3-5-flash',
+    displayName: 'Gemini 3.5 Flash',
     provider: 'Google',
   },
   {
@@ -287,15 +347,33 @@ const CANONICAL_MODEL_RULES: CanonicalRule[] = [
     provider: 'Meta',
   },
   {
+    pattern: /\bmuse[-\s]*wonder[-\s]*full\b/i,
+    canonicalId: 'muse-wonder-full',
+    displayName: 'Muse Wonder Full',
+    provider: 'Meta',
+  },
+  {
     pattern: /\bmuse[-\s]*wonder[-\s]*1[.\s-]*0\b/i,
     canonicalId: 'muse-wonder-1-0',
     displayName: 'Muse Wonder 1.0',
     provider: 'Meta',
   },
   {
+    pattern: /\bmuse[-\s]*wonder(?![-\s]*(?:1[.\s-]*0|full))\b/i,
+    canonicalId: 'muse-wonder',
+    displayName: 'Muse Wonder',
+    provider: 'Meta',
+  },
+  {
     pattern: /\bmuse[-\s]*ember\b/i,
     canonicalId: 'muse-ember',
     displayName: 'Muse Ember',
+    provider: 'Meta',
+  },
+  {
+    pattern: /\bmuse[-\s]*glimmer\b/i,
+    canonicalId: 'muse-glimmer',
+    displayName: 'Muse Glimmer',
     provider: 'Meta',
   },
 
@@ -359,6 +437,12 @@ const CANONICAL_MODEL_RULES: CanonicalRule[] = [
 
   // Alibaba / Qwen
   {
+    pattern: /\bqwen[-\s]*4(?![.\s-]*\d)\b/i,
+    canonicalId: 'qwen-4',
+    displayName: 'Qwen 4',
+    provider: 'Alibaba / Qwen',
+  },
+  {
     pattern: /\bqwen[-\s]*3[.\s-]*8[-\s]*max\b/i,
     canonicalId: 'qwen-3-8-max',
     displayName: 'Qwen 3.8 Max',
@@ -388,6 +472,12 @@ const CANONICAL_MODEL_RULES: CanonicalRule[] = [
     pattern: /\bglm[-\s]*5[.\s-]*3[-\s]*flash\b/i,
     canonicalId: 'glm-5-3-flash',
     displayName: 'GLM-5.3 Flash',
+    provider: 'Z.AI (Zhipu)',
+  },
+  {
+    pattern: /\bglm[-\s]*5[.\s-]*3(?![-\s]*flash)\b/i,
+    canonicalId: 'glm-5-3',
+    displayName: 'GLM-5.3',
     provider: 'Z.AI (Zhipu)',
   },
   {
@@ -423,6 +513,34 @@ const CANONICAL_MODEL_RULES: CanonicalRule[] = [
     provider: 'xAI',
   },
 
+  // MiniMax
+  {
+    pattern: /\bminimax[-\s]*m3(?:[.\s-]*1|p1)[-\s]*flash\b/i,
+    canonicalId: 'minimax-m3-1-flash',
+    displayName: 'MiniMax-M3.1 Flash',
+    provider: 'MiniMax',
+  },
+  {
+    pattern: /\bminimax[-\s]*m3(?![.\s-]*1|p1)\b/i,
+    canonicalId: 'minimax-m3',
+    displayName: 'MiniMax-M3',
+    provider: 'MiniMax',
+  },
+
+  // Xiaomi MiMo
+  {
+    pattern: /\bmimo[-\s]*v?2[.\s-]*6[-\s]*pro\b/i,
+    canonicalId: 'mimo-v2-6-pro',
+    displayName: 'MiMo-V2.6-Pro',
+    provider: 'Xiaomi',
+  },
+  {
+    pattern: /\bmimo[-\s]*v?2[.\s-]*6[-\s]*flash\b/i,
+    canonicalId: 'mimo-v2-6-flash',
+    displayName: 'MiMo-V2.6-Flash',
+    provider: 'Xiaomi',
+  },
+
   // GitHub / Microsoft
   {
     pattern: /\bcopilot[-\s]*fusion\b/i,
@@ -433,26 +551,71 @@ const CANONICAL_MODEL_RULES: CanonicalRule[] = [
 ];
 
 const PROVIDER_NORMALIZATION_MAP: Array<{ pattern: RegExp; name: string }> = [
-  { pattern: /anthropic/i, name: 'Anthropic' },
-  { pattern: /openai|codex/i, name: 'OpenAI' },
-  { pattern: /google|deepmind|vertex/i, name: 'Google' },
-  { pattern: /meta|facebook/i, name: 'Meta' },
+  { pattern: /anthropic|\bclaude\b/i, name: 'Anthropic' },
+  {
+    pattern: /openai|codex|\bgpt(?:[-\s.]|\d|oss)|\bchatgpt\b|\bo[134](?:[-\s.]|$)/i,
+    name: 'OpenAI',
+  },
+  { pattern: /google|deepmind|vertex|\bgemini\b|\bgemma\d*\b/i, name: 'Google' },
+  {
+    pattern: /\bmeta\b|facebook|\bllama\b|\bmuse[-\s]*(?:spark|wonder|ember|glimmer)\b/i,
+    name: 'Meta',
+  },
   { pattern: /deepseek/i, name: 'DeepSeek' },
-  { pattern: /xai|x\.ai/i, name: 'xAI' },
-  { pattern: /alibaba|qwen|tongyi/i, name: 'Alibaba / Qwen' },
+  { pattern: /xai|x\.ai|\bgrok\b/i, name: 'xAI' },
+  { pattern: /alibaba|qwen|tongyi|\bqwq\b/i, name: 'Alibaba / Qwen' },
   { pattern: /moonshot|kimi/i, name: 'Moonshot AI' },
-  { pattern: /zhipu|z\.ai|\bzai\b|glm/i, name: 'Z.AI (Zhipu)' },
-  { pattern: /mistral/i, name: 'Mistral AI' },
+  { pattern: /zhipu|z\.ai|\bzai\b|\bglm\b/i, name: 'Z.AI (Zhipu)' },
+  {
+    pattern: /mistral|\bmixtral\b|\bmagistral\b|\bministral\b|\bdevstral\b/i,
+    name: 'Mistral AI',
+  },
   { pattern: /minimax/i, name: 'MiniMax' },
-  { pattern: /tencent|hunyuan/i, name: 'Tencent' },
+  { pattern: /tencent|hunyuan|\bhy4\b/i, name: 'Tencent' },
   { pattern: /baidu|ernie/i, name: 'Baidu' },
-  { pattern: /amazon|aws|nova/i, name: 'Amazon' },
+  { pattern: /amazon|aws|\bnova[-\s]*(?:\d|micro|lite|pro|premier|omni)\b/i, name: 'Amazon' },
   { pattern: /microsoft|github/i, name: 'Microsoft / GitHub' },
-  { pattern: /xiaomi|mimo/i, name: 'Xiaomi' },
-  { pattern: /cohere/i, name: 'Cohere' },
-  { pattern: /nvidia/i, name: 'NVIDIA' },
+  { pattern: /xiaomi|\bmimo\b/i, name: 'Xiaomi' },
+  { pattern: /cohere|\bcommand[-\s]*(?:a|r)\b/i, name: 'Cohere' },
+  { pattern: /nvidia|\bnemotron\b/i, name: 'NVIDIA' },
+  { pattern: /ai21|\bjamba\b/i, name: 'AI21 Labs' },
+  { pattern: /stepfun|\bstep[-\s]*\d/i, name: 'StepFun' },
   { pattern: /thinking\s*machines|inkling/i, name: 'Thinking Machines' },
   { pattern: /kingsoft|wps/i, name: 'Kingsoft Office' },
+];
+
+// Checked when rawProvider is absent/generic, ordering derivative families before base weights
+const MODEL_FAMILY_PROVIDER_RULES: Array<{ pattern: RegExp; name: string }> = [
+  { pattern: /\bnemotron\b/i, name: 'NVIDIA' },
+  { pattern: /\bdeepseek\b/i, name: 'DeepSeek' },
+  { pattern: /\bclaude\b/i, name: 'Anthropic' },
+  {
+    pattern: /\bgpt(?:[-\s.]|\d|oss)|\bchatgpt\b|\bcodex\b|\bo[134](?:[-\s.]|$)/i,
+    name: 'OpenAI',
+  },
+  { pattern: /\bgemini\b|\bgemma\d*\b/i, name: 'Google' },
+  {
+    pattern: /\bllama\b|\bmuse[-\s]*(?:spark|wonder|ember|glimmer)\b/i,
+    name: 'Meta',
+  },
+  { pattern: /\bgrok\b/i, name: 'xAI' },
+  { pattern: /\bqwen\d*\b|\bqwq\b/i, name: 'Alibaba / Qwen' },
+  { pattern: /\bkimi\b/i, name: 'Moonshot AI' },
+  { pattern: /\bglm\b/i, name: 'Z.AI (Zhipu)' },
+  {
+    pattern: /\bmistral\b|\bmixtral\b|\bmagistral\b|\bministral\b|\bdevstral\b/i,
+    name: 'Mistral AI',
+  },
+  { pattern: /\bminimax\b/i, name: 'MiniMax' },
+  { pattern: /\bmimo\b/i, name: 'Xiaomi' },
+  { pattern: /\bcommand[-\s]*(?:a|r)\b/i, name: 'Cohere' },
+  { pattern: /\bjamba\b/i, name: 'AI21 Labs' },
+  { pattern: /\bhunyuan\b|\bhy4\b/i, name: 'Tencent' },
+  { pattern: /\bernie\b/i, name: 'Baidu' },
+  { pattern: /\bnova[-\s]*(?:\d|micro|lite|pro|premier|omni)\b/i, name: 'Amazon' },
+  { pattern: /\bstep[-\s]*\d/i, name: 'StepFun' },
+  { pattern: /\binkling\b/i, name: 'Thinking Machines' },
+  { pattern: /\bphi[-\s]*\d/i, name: 'Microsoft / GitHub' },
 ];
 
 export function extractEffortLevel(
@@ -519,15 +682,39 @@ export function extractEffortLevel(
 }
 
 export function normalizeProvider(rawProvider?: string | null, rawModelName?: string): string {
-  const candidate = `${rawProvider ?? ''} ${rawModelName ?? ''}`.trim();
-  for (const rule of PROVIDER_NORMALIZATION_MAP) {
-    if (rule.pattern.test(candidate)) {
-      return rule.name;
+  const trimmedProvider = (rawProvider ?? '').trim();
+  const hasExplicitProvider =
+    trimmedProvider.length > 0 &&
+    !/^(?:outros\s*\/\s*independente|outros|other|unknown|n\/a|-)$/i.test(
+      trimmedProvider
+    );
+
+  // 1. If an explicit provider is given, normalize it first so independent wrappers
+  //    (e.g. Nous Research Hermes on Llama, Simular AI on Claude) keep their true provider.
+  if (hasExplicitProvider) {
+    for (const rule of PROVIDER_NORMALIZATION_MAP) {
+      if (rule.pattern.test(trimmedProvider)) {
+        return rule.name;
+      }
+    }
+    return trimmedProvider;
+  }
+
+  // 2. When rawProvider is absent/generic, infer deterministically from the model family name.
+  const modelText = (rawModelName ?? '').trim();
+  if (modelText.length > 0) {
+    for (const rule of MODEL_FAMILY_PROVIDER_RULES) {
+      if (rule.pattern.test(modelText)) {
+        return rule.name;
+      }
+    }
+    for (const rule of PROVIDER_NORMALIZATION_MAP) {
+      if (rule.pattern.test(modelText)) {
+        return rule.name;
+      }
     }
   }
-  if (rawProvider && rawProvider.trim().length > 0) {
-    return rawProvider.trim();
-  }
+
   return 'Outros / Independente';
 }
 

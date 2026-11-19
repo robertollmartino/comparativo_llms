@@ -172,6 +172,7 @@ export interface RankedModelEntry {
   primaryBenchmarksCovered: number; // Y
   totalPrimaryBenchmarks: number; // Z
   substituteBenchmarksUsed: number;
+  isFrontier?: boolean;
   useCaseScores: Record<string, ModelUseCaseScore>;
   telemetry?: {
     priceInput1M?: number | null;
@@ -180,4 +181,51 @@ export interface RankedModelEntry {
     ttftSeconds?: number | null;
     aaIntelligenceIndex?: number | null;
   };
+}
+
+export interface BenchmarkRankingRow {
+  rank: number;
+  modelCanonicalId: string;
+  displayName: string;
+  provider: string;
+  effort: EffortLevel;
+  effortLabel: string;
+  rawScore: number;
+  normalizedScore: number;
+  displayScore: string;
+  originType: 'live' | 'manual';
+  sourceUrl: string;
+  updatedAt: string;
+  isFrontier: boolean;
+}
+
+export interface BenchmarkRankingTable {
+  benchmarkId: string;
+  benchmarkName: string;
+  shortName: string;
+  useCaseIds: string[];
+  useCaseNumbers: number[];
+  useCaseLabels: string[];
+  isSubstitute: boolean;
+  substituteForIds?: string[];
+  officialUrl: string;
+  whatItTests: string;
+  practicalExplanation: string;
+  higherIsBetter: boolean;
+  isBrazilianSpecific?: boolean;
+  rows: BenchmarkRankingRow[];
+}
+
+export interface BenchmarkFrontierDiagnostic {
+  benchmarkId: string;
+  benchmarkName: string;
+  shortName: string;
+  isSubstitute: boolean;
+  qualified: boolean;
+  totalDistinctModels: number;
+  frontierModelsCount: number;
+  frontierProvidersCount: number;
+  majorFrontierLabsCount: number;
+  majorFrontierLabs: string[];
+  reason: string;
 }

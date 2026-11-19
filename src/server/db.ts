@@ -2,6 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { ADAPTER_SOURCES } from '../shared/catalog.js';
+import { normalizeModel } from '../shared/normalizer.js';
 import {
   BenchmarkScoreRecord,
   SourceStatusRecord,
@@ -266,25 +267,40 @@ export class BenchmarkDatabase {
       .prepare('SELECT * FROM benchmark_scores ORDER BY normalized_score DESC')
       .all() as any[];
 
-    return rows.map((r) => ({
-      id: r.id,
-      benchmarkId: r.benchmark_id,
-      modelCanonicalId: r.model_canonical_id,
-      modelDisplayName: r.model_display_name,
-      provider: r.provider,
-      effort: r.effort,
-      effortLabel: r.effort_label,
-      rawModelName: r.raw_model_name,
-      rawScore: r.raw_score,
-      normalizedScore: r.normalized_score,
-      displayScore: r.display_score,
-      sourceId: r.source_id,
-      sourceUrl: r.source_url,
-      originType: r.origin_type,
-      reportedAt: r.reported_at ?? undefined,
-      updatedAt: r.updated_at,
-      metadata: r.metadata_json ? JSON.parse(r.metadata_json) : undefined,
-    }));
+    return rows.map((r) => {
+      const normalized = normalizeModel(
+        r.raw_model_name || r.model_display_name,
+        r.provider === 'Outros / Independente' ? null : r.provider,
+        r.effort
+      );
+      const useCanonical =
+        r.provider === 'Outros / Independente' ||
+        normalized.provider !== r.provider;
+
+      return {
+        id: r.id,
+        benchmarkId: r.benchmark_id,
+        modelCanonicalId: useCanonical
+          ? normalized.canonicalId
+          : r.model_canonical_id,
+        modelDisplayName: useCanonical
+          ? normalized.displayName
+          : r.model_display_name,
+        provider: normalized.provider,
+        effort: r.effort,
+        effortLabel: r.effort_label,
+        rawModelName: r.raw_model_name,
+        rawScore: r.raw_score,
+        normalizedScore: r.normalized_score,
+        displayScore: r.display_score,
+        sourceId: r.source_id,
+        sourceUrl: r.source_url,
+        originType: r.origin_type,
+        reportedAt: r.reported_at ?? undefined,
+        updatedAt: r.updated_at,
+        metadata: r.metadata_json ? JSON.parse(r.metadata_json) : undefined,
+      };
+    });
   }
 
   public getManualCountsBySource(): Map<string, number> {

@@ -4,8 +4,17 @@ import {
   clampNormalizedScore,
   extractEffortLevel,
   normalizeModel,
+  normalizeProvider,
 } from '../src/shared/normalizer.js';
-import { calculateOverallRanking } from '../src/shared/ranking.js';
+import {
+  buildPerBenchmarkRankings,
+  calculateOverallRanking,
+  evaluateBenchmarkFrontierCoverage,
+  getFrontierQualifiedBenchmarkIds,
+  isFrontierModel,
+  limitTopModelsPerProvider,
+} from '../src/shared/ranking.js';
+import { RankedModelEntry } from '../src/shared/types.js';
 import { BenchmarkDatabase } from '../src/server/db.js';
 import {
   parseArtificialAnalysisHtmlOrJson,
@@ -345,5 +354,311 @@ describe('4. Agendador de 5 Minutos (300000 ms) e Persistência SQLite', () => {
     expect(db.getAllScores()).toHaveLength(1);
 
     db.close();
+  });
+});
+
+describe('5. Normalização Determinística de Provedores por Família de Modelo', () => {
+  it('mapeia famílias OpenAI, Google, Anthropic e Meta corretamente mesmo quando rawProvider está vazio', () => {
+    // OpenAI
+    expect(normalizeModel('GPT-6 Sol').provider).toBe('OpenAI');
+    expect(normalizeModel('GPT-5.6 Terra').provider).toBe('OpenAI');
+    expect(normalizeModel('GPT-5.6 Luna').provider).toBe('OpenAI');
+    expect(normalizeModel('o1-2024-12-17').provider).toBe('OpenAI');
+    expect(normalizeModel('o3').provider).toBe('OpenAI');
+    expect(normalizeModel('o4-mini').provider).toBe('OpenAI');
+    expect(normalizeProvider('', 'gpt-4.1-mini')).toBe('OpenAI');
+
+    // Google
+    expect(normalizeModel('Gemini 4 Neon').provider).toBe('Google');
+    expect(normalizeModel('Gemini 3.7 Flash').provider).toBe('Google');
+    expect(normalizeModel('Gemma 2 (27B)').provider).toBe('Google');
+    expect(normalizeModel('Gemma3-12B-it').provider).toBe('Google');
+
+    // Anthropic
+    expect(normalizeModel('Claude 4.0-Sonnet').provider).toBe('Anthropic');
+    expect(normalizeModel('Claude 4.0-Sonnet').canonicalId).toBe('claude-sonnet-4');
+    expect(normalizeModel('Claude Haiku 4.5 (Thinking)').provider).toBe('Anthropic');
+
+    // Meta
+    expect(normalizeModel('Llama 4 Maverick').provider).toBe('Meta');
+    expect(normalizeModel('Muse Spark 1.3').provider).toBe('Meta');
+    expect(normalizeModel('Muse Wonder ( xhigh )').provider).toBe('Meta');
+    expect(normalizeModel('Muse Ember').provider).toBe('Meta');
+
+    // MiniMax & NVIDIA derivative preservation
+    expect(normalizeModel('Minimax M3p1 Flash', 'OpenAI').provider).toBe('MiniMax');
+    expect(normalizeProvider('Nous Research', 'Hermes 4 - Llama-3.1 70B')).toBe(
+      'Nous Research'
+    );
+    expect(normalizeProvider(null, 'Llama 3.3 Nemotron Super')).toBe('NVIDIA');
+  });
+});
+
+describe('6. Limite Determinístico de Top 4 Modelos por Provedor', () => {
+  function makeMockEntry(
+    id: string,
+    displayName: string,
+    provider: string,
+    overallScore: number,
+    primaryBenchmarksCovered: number,
+    useCasesCovered = 5
+  ): RankedModelEntry {
+    return {
+      modelCanonicalId: id,
+      displayName,
+      provider,
+      selectedEffort: 'default',
+      availableEfforts: ['default'],
+      overallScore,
+      useCasesCovered,
+      totalUseCases: 7,
+      primaryBenchmarksCovered,
+      totalPrimaryBenchmarks: 9,
+      substituteBenchmarksUsed: 0,
+      isFrontier: isFrontierModel(id, displayName),
+      useCaseScores: {},
+    };
+  }
+
+  it('mantém estritamente no máximo 4 modelos por provedor ordenados por overallScore com desempate por primaryBenchmarksCovered e fronteira', () => {
+    const entries: RankedModelEntry[] = [
+      // 6 OpenAI models (including ties on overallScore)
+      makeMockEntry('gpt-6-2-astra', 'GPT-6.2 Astra', 'OpenAI', 92, 6),
+      makeMockEntry('gpt-6-1-sol', 'GPT-6.1 Sol', 'OpenAI', 89, 5),
+      makeMockEntry('gpt-5-6-sol', 'GPT-5.6 Sol', 'OpenAI', 85, 5),
+      makeMockEntry('gpt-5-6-terra', 'GPT-5.6 Terra', 'OpenAI', 85, 4), // tie overallScore 85, lower primary than 5.6 Sol, higher than legacy
+      makeMockEntry('gpt-4o', 'GPT-4o', 'OpenAI', 85, 4), // tie overallScore 85 & primary 4, loses tie-break to frontier GPT-5.6 Terra
+      makeMockEntry('gpt-3-5', 'GPT-3.5', 'OpenAI', 60, 1),
+      // 5 Anthropic models
+      makeMockEntry('claude-fable-5-2', 'Claude Fable 5.2', 'Anthropic', 94, 7),
+      makeMockEntry('claude-opus-5-5', 'Claude Opus 5.5', 'Anthropic', 91, 6),
+      makeMockEntry('claude-sonnet-5-5', 'Claude Sonnet 5.5', 'Anthropic', 88, 5),
+      makeMockEntry('claude-opus-5', 'Claude Opus 5', 'Anthropic', 86, 5),
+      makeMockEntry('claude-3-5-haiku', 'Claude 3.5 Haiku', 'Anthropic', 70, 2),
+    ];
+
+    const top4 = limitTopModelsPerProvider(entries, 4);
+    const openai = top4.filter((m) => m.provider === 'OpenAI');
+    const anthropic = top4.filter((m) => m.provider === 'Anthropic');
+
+    expect(openai).toHaveLength(4);
+    expect(anthropic).toHaveLength(4);
+    expect(openai.map((m) => m.modelCanonicalId)).toEqual([
+      'gpt-6-2-astra',
+      'gpt-6-1-sol',
+      'gpt-5-6-sol',
+      'gpt-5-6-terra',
+    ]);
+    // Legacy models gpt-4o, gpt-3-5, claude-3-5-haiku eliminated
+    expect(top4.some((m) => m.modelCanonicalId === 'gpt-4o')).toBe(false);
+    expect(top4.some((m) => m.modelCanonicalId === 'gpt-3-5')).toBe(false);
+    expect(top4.some((m) => m.modelCanonicalId === 'claude-3-5-haiku')).toBe(
+      false
+    );
+    // Global ranking remains sorted descending by overallScore
+    expect(top4[0].modelCanonicalId).toBe('claude-fable-5-2');
+    expect(top4[1].modelCanonicalId).toBe('gpt-6-2-astra');
+  });
+});
+
+describe('7. Filtro Estrito de Provedores Sem Vazamento e Tabelas Separadas por Benchmark', () => {
+  const multiProviderScores = parseManualImportPayload(
+    'json',
+    JSON.stringify([
+      // BrowseComp (6 models across 3 providers, including 5 OpenAI to test Top 4 limit)
+      { benchmarkId: 'browsecomp', model: 'Claude Fable 5.2', provider: 'Anthropic', score: 93 },
+      { benchmarkId: 'browsecomp', model: 'Gemini 4 Carbon', provider: 'Google', score: 91 },
+      { benchmarkId: 'browsecomp', model: 'GPT-6.2 Astra (High)', provider: 'OpenAI', effort: 'high', score: 94 },
+      { benchmarkId: 'browsecomp', model: 'GPT-6.2 Astra (Low)', provider: 'OpenAI', effort: 'low', score: 80 },
+      { benchmarkId: 'browsecomp', model: 'GPT-6.1 Sol', provider: 'OpenAI', score: 90 },
+      { benchmarkId: 'browsecomp', model: 'GPT-6 Sol', score: 88 }, // rawProvider omitted -> must resolve to OpenAI!
+      { benchmarkId: 'browsecomp', model: 'GPT-5.6 Terra', score: 86 }, // rawProvider omitted -> OpenAI
+      { benchmarkId: 'browsecomp', model: 'GPT-4o', score: 70 }, // 5th OpenAI model -> cut by Top 4
+      { benchmarkId: 'browsecomp', model: 'Muse Spark 1.3', provider: 'Meta', score: 85 },
+      // Terminal-Bench 2.1
+      { benchmarkId: 'terminal-bench-2-1', model: 'Claude Fable 5.2', provider: 'Anthropic', score: 78 },
+      { benchmarkId: 'terminal-bench-2-1', model: 'Gemini 4 Carbon', provider: 'Google', score: 82 },
+      { benchmarkId: 'terminal-bench-2-1', model: 'GPT-6.2 Astra (High)', provider: 'OpenAI', effort: 'high', score: 84 },
+      { benchmarkId: 'terminal-bench-2-1', model: 'Muse Spark 1.3', provider: 'Meta', score: 74 },
+    ])
+  );
+
+  it('garante zero vazamento de provedores não selecionados no ranking composto e nas tabelas por benchmark', () => {
+    const selectedProviders = ['Anthropic', 'Google'];
+
+    const overall = calculateOverallRanking(multiProviderScores, {
+      weights: WEIGHT_PRESETS[0].weights,
+      includeSubstitutes: true,
+      providerFilter: selectedProviders,
+      // Even if selectedModelIds contains an OpenAI model ID, providerFilter MUST block it!
+      selectedModelIds: ['claude-fable-5-2', 'gemini-4-carbon', 'gpt-6-2-astra'],
+      maxModelsPerProvider: 4,
+    });
+    expect(overall.length).toBeGreaterThan(0);
+    expect(overall.every((m) => selectedProviders.includes(m.provider))).toBe(true);
+    expect(overall.some((m) => m.provider === 'OpenAI')).toBe(false);
+    expect(overall.some((m) => m.provider === 'Meta')).toBe(false);
+
+    const tables = buildPerBenchmarkRankings(multiProviderScores, {
+      includeSubstitutes: true,
+      providerFilter: selectedProviders,
+      selectedModelIds: ['claude-fable-5-2', 'gemini-4-carbon', 'gpt-6-2-astra'],
+      maxModelsPerProvider: 4,
+    });
+    expect(tables).toHaveLength(2);
+    for (const table of tables) {
+      expect(table.rows.every((r) => selectedProviders.includes(r.provider))).toBe(
+        true
+      );
+      expect(table.rows.some((r) => r.provider === 'OpenAI')).toBe(false);
+    }
+  });
+
+  it('gera tabelas separadas por benchmark ordenadas do melhor para o pior respeitando esforço e Top 4 por provedor', () => {
+    const tables = buildPerBenchmarkRankings(multiProviderScores, {
+      includeSubstitutes: true,
+      preferredEffort: 'best',
+      maxModelsPerProvider: 4,
+    });
+
+    expect(tables).toHaveLength(2);
+    const browseTable = tables.find((t) => t.benchmarkId === 'browsecomp')!;
+    const tbTable = tables.find((t) => t.benchmarkId === 'terminal-bench-2-1')!;
+
+    expect(browseTable).toBeDefined();
+    expect(tbTable).toBeDefined();
+
+    // Verify strictly sorted best -> worst in BrowseComp
+    for (let i = 1; i < browseTable.rows.length; i++) {
+      expect(browseTable.rows[i - 1].rawScore).toBeGreaterThanOrEqual(
+        browseTable.rows[i].rawScore
+      );
+      expect(browseTable.rows[i - 1].rank).toBe(i);
+    }
+    expect(browseTable.rows[0].modelCanonicalId).toBe('gpt-6-2-astra');
+    expect(browseTable.rows[0].rawScore).toBe(94);
+
+    // OpenAI had 5 models in BrowseComp; strictly capped at 4 (gpt-4o dropped)
+    const openaiRows = browseTable.rows.filter((r) => r.provider === 'OpenAI');
+    expect(openaiRows).toHaveLength(4);
+    expect(openaiRows.some((r) => r.modelCanonicalId === 'gpt-4o')).toBe(false);
+
+    // Verify effort override changes ranking position deterministically
+    const tablesWithLowOverride = buildPerBenchmarkRankings(multiProviderScores, {
+      includeSubstitutes: true,
+      preferredEffort: 'best',
+      modelEffortOverrides: { 'gpt-6-2-astra': 'low' },
+      maxModelsPerProvider: 4,
+    });
+    const browseLow = tablesWithLowOverride.find(
+      (t) => t.benchmarkId === 'browsecomp'
+    )!;
+    // With GPT-6.2 Astra forced to low (80), Claude Fable 5.2 (93) takes #1
+    expect(browseLow.rows[0].modelCanonicalId).toBe('claude-fable-5-2');
+    const astraRow = browseLow.rows.find(
+      (r) => r.modelCanonicalId === 'gpt-6-2-astra'
+    )!;
+    expect(astraRow.rawScore).toBe(80);
+    expect(astraRow.effort).toBe('low');
+  });
+});
+
+describe('8. Filtro Determinístico de Benchmarks sem Modelos de Fronteira', () => {
+  const mixedFrontierAndLegacyScores = parseManualImportPayload(
+    'json',
+    JSON.stringify([
+      // QUALIFIED PRIMARY (UC 1): browsecomp — 4 frontier models across 4 major frontier labs
+      { benchmarkId: 'browsecomp', model: 'Claude Fable 5.2', provider: 'Anthropic', score: 92 },
+      { benchmarkId: 'browsecomp', model: 'GPT-6.2 Astra', provider: 'OpenAI', score: 91 },
+      { benchmarkId: 'browsecomp', model: 'Gemini 4 Carbon', provider: 'Google', score: 89 },
+      { benchmarkId: 'browsecomp', model: 'Muse Spark 1.3', provider: 'Meta', score: 86 },
+
+      // LEGACY-ONLY PRIMARY (UC 6): artifactsbench — only old models, 0 frontier models -> MUST BE HIDDEN
+      { benchmarkId: 'artifactsbench', model: 'GPT-4o', provider: 'OpenAI', score: 72 },
+      { benchmarkId: 'artifactsbench', model: 'Claude 3.5 Sonnet', provider: 'Anthropic', score: 71 },
+      { benchmarkId: 'artifactsbench', model: 'Gemini 2.0 Flash', provider: 'Google', score: 69 },
+      { benchmarkId: 'artifactsbench', model: 'Llama 3.3 70B', provider: 'Meta', score: 65 },
+
+      // LOW-FRONTIER PRIMARY (UC 3): spreadsheetbench-2 — only 1 frontier model -> MUST BE HIDDEN
+      { benchmarkId: 'spreadsheetbench-2', model: 'Gemini 3.1 Pro', provider: 'Google', score: 60 },
+      { benchmarkId: 'spreadsheetbench-2', model: 'GPT-5.2', provider: 'OpenAI', score: 58 },
+      { benchmarkId: 'spreadsheetbench-2', model: 'Claude Opus 4.6', provider: 'Anthropic', score: 55 },
+
+      // QUALIFIED SUBSTITUTE (UC 3): aa-coding-math-index — 4 frontier models across 3+ major labs -> MUST QUALIFY
+      { benchmarkId: 'aa-coding-math-index', model: 'Claude Fable 5.2', provider: 'Anthropic', score: 84 },
+      { benchmarkId: 'aa-coding-math-index', model: 'GPT-6.2 Astra', provider: 'OpenAI', score: 86 },
+      { benchmarkId: 'aa-coding-math-index', model: 'Gemini 4 Carbon', provider: 'Google', score: 82 },
+      { benchmarkId: 'aa-coding-math-index', model: 'Muse Wonder 1.0', provider: 'Meta', score: 80 },
+
+      // INSUFFICIENT MAJOR LAB COVERAGE (UC 7): omegause-officeval — 4 non-Big4 models, 0/4 major labs -> MUST BE HIDDEN
+      { benchmarkId: 'omegause-officeval', model: 'GLM-5.2', provider: 'Z.AI (Zhipu)', score: 20 },
+      { benchmarkId: 'omegause-officeval', model: 'Kimi K2.6', provider: 'Moonshot AI', score: 19 },
+      { benchmarkId: 'omegause-officeval', model: 'DeepSeek V4 Pro', provider: 'DeepSeek', score: 18 },
+      { benchmarkId: 'omegause-officeval', model: 'MiniMax-M3', provider: 'MiniMax', score: 17 },
+    ])
+  );
+
+  it('oculta benchmarks com 0 registros, apenas modelos antigos ou cobertura insuficiente de laboratórios de fronteira', () => {
+    const qualified = getFrontierQualifiedBenchmarkIds(
+      mixedFrontierAndLegacyScores
+    );
+    const diagnostics = evaluateBenchmarkFrontierCoverage(
+      mixedFrontierAndLegacyScores
+    );
+
+    expect(qualified.has('browsecomp')).toBe(true);
+    expect(qualified.has('aa-coding-math-index')).toBe(true);
+
+    // Hidden legacy / low-frontier / 0-record benchmarks
+    expect(qualified.has('artifactsbench')).toBe(false);
+    expect(qualified.has('spreadsheetbench-2')).toBe(false);
+    expect(qualified.has('omegause-officeval')).toBe(false);
+    expect(qualified.has('bluefin')).toBe(false); // 0 records
+    expect(qualified.has('gaia')).toBe(false); // 0 records
+
+    const artifactsDiag = diagnostics.find(
+      (d) => d.benchmarkId === 'artifactsbench'
+    )!;
+    expect(artifactsDiag.qualified).toBe(false);
+    expect(artifactsDiag.frontierModelsCount).toBe(0);
+
+    // Per-benchmark tables must NEVER include hidden benchmarks
+    const tables = buildPerBenchmarkRankings(mixedFrontierAndLegacyScores, {
+      includeSubstitutes: true,
+      onlyFrontierQualified: true,
+      maxModelsPerProvider: 4,
+    });
+    const tableIds = tables.map((t) => t.benchmarkId);
+    expect(tableIds).toContain('browsecomp');
+    expect(tableIds).toContain('aa-coding-math-index');
+    expect(tableIds).not.toContain('artifactsbench');
+    expect(tableIds).not.toContain('spreadsheetbench-2');
+    expect(tableIds).not.toContain('omegause-officeval');
+  });
+
+  it('calcula o ranking composto de um Caso de Uso usando apenas substitutos qualificados quando os primários foram ocultados', () => {
+    const ranked = calculateOverallRanking(mixedFrontierAndLegacyScores, {
+      weights: WEIGHT_PRESETS[0].weights,
+      includeSubstitutes: true,
+      onlyFrontierQualified: true,
+      maxModelsPerProvider: 4,
+    });
+
+    // Legacy-only models from hidden artifactsbench should NOT appear at all
+    expect(ranked.some((m) => m.modelCanonicalId === 'gpt-4o')).toBe(false);
+    expect(ranked.some((m) => m.modelCanonicalId === 'glm-5-2')).toBe(false);
+
+    const fable = ranked.find((m) => m.modelCanonicalId === 'claude-fable-5-2')!;
+    expect(fable).toBeDefined();
+    // UC 1 scored via qualified primary browsecomp (92)
+    expect(fable.useCaseScores['uc-1-legal-tax-search'].score).toBe(92);
+    // UC 3 had all primaries hidden (bluefin 0 records, spreadsheetbench-2 hidden),
+    // so UC 3 is scored via qualified substitute aa-coding-math-index (84)
+    expect(fable.useCaseScores['uc-3-excel-spreadsheets'].score).toBe(84);
+    expect(
+      fable.useCaseScores['uc-3-excel-spreadsheets'].usedSubstituteCount
+    ).toBe(1);
+    // Overall composite average of UC 1 (92) and UC 3 (84) = 88
+    expect(fable.overallScore).toBe(88);
   });
 });
